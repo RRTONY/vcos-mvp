@@ -10,7 +10,7 @@ interface CUTask {
   priority?: { id?: string; priority?: string }
   list?: { id: string; name: string }
   folder?: { name: string }
-  assignees?: Array<{ username?: string; email?: string }>
+  assignees?: Array<{ username?: string; email?: string; id?: string }>
 }
 
 export async function GET() {
@@ -29,20 +29,38 @@ export async function GET() {
     const overdueTasks = tasks.filter(
       (t) => t.due_date && parseInt(t.due_date) < now && t.status?.type !== 'closed'
     )
-    const urgentTasks = tasks.filter((t) => t.priority?.id === '1')
+    const urgentTasks = tasks.filter((t) => t.priority?.id === '1' && t.status?.type !== 'closed')
     const completedTasks = tasks.filter((t) => t.status?.type === 'closed')
     const totalActive = tasks.length
 
-    // Return top 25 overdue tasks with names for drill-down
-    const overdueDetails = overdueTasks.slice(0, 25).map((t) => ({
-      id: t.id,
-      name: t.name,
-      list: t.list?.name ?? t.folder?.name ?? 'Unknown list',
-      dueDate: t.due_date ? new Date(parseInt(t.due_date)).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : '',
-      priority: t.priority?.priority ?? '',
-      url: t.url ?? `https://app.clickup.com/t/${t.id}`,
-      assignees: (t.assignees ?? []).map((a) => a.username ?? a.email ?? '').filter(Boolean),
-    }))
+    // Per-assignee stats
+    const assigneeStats: Record<string, { total: number; overdue: number; urgent: number }> = {}
+    for (const t of tasks) {
+      if (t.status?.type === 'closed') continue
+      for (const a of (t.assignees ?? [])) {
+        const name = (a.username ?? a.email ?? '').toLowerCase()
+        if (!name) continue
+        if (!assigneeStats[name]) assigneeStats[name] = { total: 0, overdue: 0, urgent: 0 }
+        assigneeStats[name].total++
+        if (t.due_date && parseInt(t.due_date) < now && t.status?.type !== 'closed') assigneeStats[name].overdue++
+        if (t.priority?.id === '1') assigneeStats[name].urgent++
+      }
+    }
+
+    // High priority tasks (priority.id === '2'), not closed
+    const highTasks = tasks.filter((t) => t.priority?.id === '2' && t.status?.type !== 'closed')
+
+    function taskDetail(t: CUTask) {
+      return {
+        id: t.id,
+        name: t.name,
+        list: t.list?.name ?? t.folder?.name ?? 'Unknown list',
+        dueDate: t.due_date ? new Date(parseInt(t.due_date)).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : '',
+        priority: t.priority?.priority ?? '',
+        url: t.url ?? `https://app.clickup.com/t/${t.id}`,
+        assignees: (t.assignees ?? []).map((a) => a.username ?? a.email ?? '').filter(Boolean),
+      }
+    }
 
     return NextResponse.json({
       totalTasks: totalActive,
@@ -50,7 +68,10 @@ export async function GET() {
       overduePercent: totalActive > 0 ? Math.round((overdueTasks.length / totalActive) * 100) : 0,
       urgent: urgentTasks.length,
       completed: completedTasks.length,
-      overdueDetails,
+      overdueDetails: overdueTasks.slice(0, 25).map(taskDetail),
+      urgentDetails: urgentTasks.slice(0, 25).map(taskDetail),
+      highDetails: highTasks.slice(0, 25).map(taskDetail),
+      assigneeStats,
     })
   } catch (err) {
     const msg = err instanceof Error ? err.message : 'Unknown error'

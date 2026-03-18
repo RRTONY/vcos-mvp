@@ -1,98 +1,199 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect, useRef } from 'react'
+import { useRefresh } from '@/components/RefreshContext'
 import { useToast } from '@/components/Toast'
-import { ShareSlackButton, ShareClickUpButton } from '@/components/ShareButtons'
+
+interface OverdueTask {
+  id: string
+  name: string
+  list: string
+  dueDate: string
+  priority: string
+  url: string
+  assignees: string[]
+}
 
 interface Loop {
   id: string
   p: 'critical' | 'high'
-  owner: string
-  due: string
   text: string
-  resolved?: boolean
+  list: string
+  dueDate: string
+  assignees: string[]
+  url: string
+  dismissed?: boolean
 }
 
-const INITIAL_LOOPS: Loop[] = [
-  { id: 'L1', p: 'critical', owner: 'Alex + Tony', due: 'Before 2 PM today', text: 'ImpactSoul narrative contradiction — Sections 2 vs 11 vs 13 conflict. Must resolve before Reeve call.' },
-  { id: 'L2', p: 'critical', owner: 'Josh', due: 'Today EOD', text: 'Weekly report not filed. Kim bumped twice re Maxwell Biosciences + Peptoid World emails.' },
-  { id: 'L3', p: 'critical', owner: 'Alex', due: 'Today EOD', text: 'Weekly report not filed. Reeve workload note needed (40–50% vs 25% proposed).' },
-  { id: 'L4', p: 'critical', owner: 'Kim', due: 'Today', text: 'BILL.com 12 sync conflicts + Holographik invoice — resolve before EOD.' },
-  { id: 'L5', p: 'high', owner: 'Kim', due: 'Mar 18', text: 'Update #weeklyreports bot template — add Braintrust 4-point section (questions 14–17).' },
-  { id: 'L6', p: 'high', owner: 'Tony + Ben', due: 'This week', text: 'Ben Sheppard scope + compensation conversation — explicitly requested by Ben.' },
-  { id: 'L7', p: 'high', owner: 'Tony / Kim', due: 'This week', text: 'ImpactSoul legal entity formation — no entity = no grants, no Series A.' },
+const FALLBACK_LOOPS: Loop[] = [
+  { id: 'L4', p: 'critical', text: 'BILL.com 12 sync conflicts + Holographik invoice — resolve before EOD.', list: 'Finance', dueDate: 'Today', assignees: ['Kim'], url: 'https://app.clickup.com/10643959/home' },
+  { id: 'L5', p: 'high', text: 'Update #weeklyreports bot template — add Braintrust 4-point section.', list: 'Operations', dueDate: 'Mar 18', assignees: ['Kim'], url: 'https://app.clickup.com/10643959/home' },
+  { id: 'L7', p: 'high', text: 'ImpactSoul legal entity formation — no entity = no grants, no Series A.', list: 'Legal', dueDate: 'This week', assignees: ['Tony', 'Kim'], url: 'https://app.clickup.com/10643959/home' },
 ]
 
+function taskToLoop(t: OverdueTask, p: 'critical' | 'high'): Loop {
+  return {
+    id: t.id,
+    p,
+    text: t.name,
+    list: t.list,
+    dueDate: t.dueDate || 'No due date',
+    assignees: t.assignees,
+    url: t.url,
+  }
+}
+
 export default function OpenLoopsPage() {
-  const [loops, setLoops] = useState<Loop[]>(INITIAL_LOOPS)
+  const [loops, setLoops] = useState<Loop[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState(false)
+  const { refreshKey } = useRefresh()
+  const prevRefreshKey = useRef(refreshKey)
   const { toast } = useToast()
 
-  function resolve(id: string) {
-    setLoops((prev) => prev.map((l) => (l.id === id ? { ...l, resolved: true } : l)))
-    toast('Loop marked resolved')
+  useEffect(() => {
+    let cancelled = false
+    async function fetchLoops() {
+      setLoading(true)
+      setError(false)
+      try {
+        const res = await fetch('/api/clickup-tasks')
+        if (!res.ok) throw new Error('API error')
+        const data = await res.json()
+        if (data.error) throw new Error(data.error)
+        const urgent: Loop[] = (data.urgentDetails ?? []).map((t: OverdueTask) => taskToLoop(t, 'critical'))
+        const high: Loop[] = (data.highDetails ?? []).map((t: OverdueTask) => taskToLoop(t, 'high'))
+        if (!cancelled) {
+          setLoops([...urgent, ...high])
+          setLoading(false)
+        }
+      } catch {
+        if (!cancelled) {
+          setError(true)
+          setLoops(FALLBACK_LOOPS)
+          setLoading(false)
+        }
+      }
+    }
+    fetchLoops()
+    return () => { cancelled = true }
+  }, [])
+
+  useEffect(() => {
+    if (refreshKey === prevRefreshKey.current) return
+    prevRefreshKey.current = refreshKey
+    let cancelled = false
+    async function refetch() {
+      setLoading(true)
+      setError(false)
+      try {
+        const res = await fetch('/api/clickup-tasks')
+        if (!res.ok) throw new Error('API error')
+        const data = await res.json()
+        if (data.error) throw new Error(data.error)
+        const urgent: Loop[] = (data.urgentDetails ?? []).map((t: OverdueTask) => taskToLoop(t, 'critical'))
+        const high: Loop[] = (data.highDetails ?? []).map((t: OverdueTask) => taskToLoop(t, 'high'))
+        if (!cancelled) {
+          setLoops([...urgent, ...high])
+          setLoading(false)
+        }
+      } catch {
+        if (!cancelled) {
+          setError(true)
+          setLoops(FALLBACK_LOOPS)
+          setLoading(false)
+        }
+      }
+    }
+    refetch()
+    return () => { cancelled = true }
+  }, [refreshKey])
+
+  function dismiss(id: string) {
+    setLoops((prev) => prev.map((l) => (l.id === id ? { ...l, dismissed: true } : l)))
+    toast('Loop dismissed')
   }
 
-  const open = loops.filter((l) => !l.resolved)
-  const resolved = loops.filter((l) => l.resolved)
+  const open = loops.filter((l) => !l.dismissed)
+  const dismissed = loops.filter((l) => l.dismissed)
 
   return (
     <div>
-      <div className="slbl mt-6">Critical Open Loops — Mar 16, 2026</div>
-      {open.length > 0 ? (
-        <div className="alert alert-red mb-4">
-          {open.length} item{open.length !== 1 ? 's' : ''} require resolution this week.
+      <div className="slbl mt-6">Critical Open Loops</div>
+
+      {loading ? (
+        <div className="alert alert-amber animate-pulse">Fetching live data…</div>
+      ) : error ? (
+        <div className="alert alert-red mb-4">Could not load live ClickUp data — showing cached items.</div>
+      ) : open.length === 0 ? (
+        <div className="alert alert-amber mb-4" style={{ background: '#d1fae5', borderColor: '#6ee7b7', color: '#065f46' }}>
+          No critical open loops ✓
         </div>
       ) : (
-        <div className="alert alert-amber mb-4">All loops resolved ✓</div>
+        <div className="alert alert-red mb-4">
+          {open.length} item{open.length !== 1 ? 's' : ''} require resolution.
+        </div>
       )}
 
-      <div className="space-y-2">
-        {open.map((l) => {
-          const isCritical = l.p === 'critical'
-          return (
-            <div
-              key={l.id}
-              className={`card border-l-4 mb-0 ${isCritical ? 'border-l-ink' : 'border-l-ink3'}`}
-            >
-              <div className="p-4 flex items-start gap-3">
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2 flex-wrap mb-1.5">
-                    <span className={`text-xs font-bold px-1.5 py-0.5 ${isCritical ? 'bg-ink text-sand' : 'bg-sand2 text-ink3'}`}>
-                      {l.p}
-                    </span>
-                    <span className="text-xs font-bold text-ink3">{l.owner}</span>
-                    <span className="text-xs text-ink4">· {l.due}</span>
+      {!loading && (
+        <div className="space-y-2">
+          {open.map((l) => {
+            const isCritical = l.p === 'critical'
+            return (
+              <div
+                key={l.id}
+                className={`card border-l-4 mb-2 ${isCritical ? 'border-l-red-600' : 'border-l-amber-500'}`}
+              >
+                <div className="p-4 flex items-start gap-3">
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap mb-1.5">
+                      <span className={`text-xs font-bold px-1.5 py-0.5 ${isCritical ? 'bg-black text-white' : 'bg-sand2 text-ink3'}`}>
+                        {isCritical ? 'CRITICAL' : 'HIGH'}
+                      </span>
+                      {l.assignees.length > 0 && (
+                        <span className="text-xs font-bold text-ink3">{l.assignees.join(' · ')}</span>
+                      )}
+                      <span className="text-xs text-ink4">· {l.dueDate}</span>
+                    </div>
+                    <p className="text-sm font-medium leading-relaxed">{l.text}</p>
+                    <p className="text-xs text-ink3 mt-0.5">{l.list}</p>
                   </div>
-                  <p className="text-sm leading-relaxed">{l.text}</p>
-                </div>
-                <div className="flex flex-col gap-1.5 flex-shrink-0">
-                  <ShareClickUpButton
-                    title={`[VCOS Loop] ${l.owner} — ${l.due}`}
-                    description={l.text}
-                    priority={l.p === 'critical' ? 1 : 2}
-                    label="→ ClickUp"
-                  />
-                  <button onClick={() => resolve(l.id)} className="btn-secondary">
-                    ✓ Resolve
-                  </button>
+                  <div className="flex flex-col gap-1.5 flex-shrink-0">
+                    <a
+                      href={l.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="border border-sand3 px-2 py-1 text-xs font-bold hover:bg-sand2 transition-colors text-center"
+                    >
+                      → ClickUp
+                    </a>
+                    <button
+                      onClick={() => dismiss(l.id)}
+                      className="border border-sand3 px-2 py-1 text-xs hover:bg-sand2 transition-colors"
+                    >
+                      ✓ Dismiss
+                    </button>
+                  </div>
                 </div>
               </div>
-            </div>
-          )
-        })}
-      </div>
+            )
+          })}
+        </div>
+      )}
 
-      {resolved.length > 0 && (
+      {dismissed.length > 0 && (
         <>
-          <div className="slbl mt-6">Resolved ({resolved.length})</div>
+          <div className="slbl mt-6">Dismissed ({dismissed.length})</div>
           <div className="space-y-2 opacity-40">
-            {resolved.map((l) => (
+            {dismissed.map((l) => (
               <div key={l.id} className="card border-l-4 border-l-sand3 mb-0">
                 <div className="p-4 flex items-start gap-3">
                   <div className="flex-1">
                     <div className="flex items-center gap-2 mb-1">
-                      <span className="text-xs font-bold text-ink4">{l.owner}</span>
-                      <span className="text-xs text-ink4">· {l.due}</span>
+                      {l.assignees.length > 0 && (
+                        <span className="text-xs font-bold text-ink4">{l.assignees.join(' · ')}</span>
+                      )}
+                      <span className="text-xs text-ink4">· {l.dueDate}</span>
                     </div>
                     <p className="text-sm line-through text-ink4">{l.text}</p>
                   </div>
