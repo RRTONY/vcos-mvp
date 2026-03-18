@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server'
-import { channelHistory, userInfo, usersList, conversationsList } from '@/lib/slack'
+import { channelHistory, usersList, conversationsList } from '@/lib/slack'
 
 const WEEKLY_REPORTS_CHANNEL = 'C08K6KM53FV'
 const FULL_TEAM = ['Rob Holmes', 'Alex Veytsel', 'Josh Bykowski', 'Kim / Chase', 'Daniel Baez', 'Ben Sheppard']
@@ -26,27 +26,27 @@ export async function GET() {
 
   try {
     const oldest = String(Math.floor((Date.now() - 7 * 24 * 60 * 60 * 1000) / 1000))
+
+    // 3 API calls total — no per-user calls
     const [historyData, membersData, channelsData] = await Promise.all([
       channelHistory(WEEKLY_REPORTS_CHANNEL, oldest),
       usersList(),
       conversationsList(),
     ])
 
-    const messages: Array<{ user?: string }> = historyData.messages ?? []
+    // Build ID→name map from the usersList we already fetched
+    const allUsers: Array<{ id: string; real_name?: string; name?: string; deleted?: boolean; is_bot?: boolean }> =
+      membersData.members ?? []
 
-    // Resolve user IDs to real names
-    const uniqueIds = Array.from(new Set(messages.map((m) => m.user).filter(Boolean))) as string[]
     const userMap: Record<string, string> = {}
-    await Promise.all(
-      uniqueIds.map(async (uid) => {
-        try {
-          const d = await userInfo(uid)
-          if (d.user) userMap[uid] = d.user.real_name ?? d.user.name ?? ''
-        } catch { /* ignore */ }
-      })
-    )
+    for (const u of allUsers) {
+      if (u.id) userMap[u.id] = u.real_name ?? u.name ?? ''
+    }
 
-    const posters = Array.from(new Set(Object.values(userMap)))
+    const messages: Array<{ user?: string }> = historyData.messages ?? []
+    const posters = Array.from(new Set(
+      messages.map((m) => (m.user ? userMap[m.user] : '')).filter(Boolean)
+    ))
 
     const filed: string[] = []
     const missing: string[] = []
@@ -63,9 +63,7 @@ export async function GET() {
       else missing.push(member)
     }
 
-    const activeMembers = (membersData.members ?? []).filter(
-      (m: { deleted?: boolean; is_bot?: boolean }) => !m.deleted && !m.is_bot
-    ).length
+    const activeMembers = allUsers.filter((m) => !m.deleted && !m.is_bot).length
 
     return NextResponse.json({
       weeklyReports: { filed, missing, week: weekLabel() },

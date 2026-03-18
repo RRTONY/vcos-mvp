@@ -2,12 +2,13 @@
 # VCOS — Visual Chief of Staff · Netlify Configuration
 # Site: https://vsoc.netlify.app
 # Owner: Tony Greenberg / RampRate · ImpactSoul
-# Stack: Next.js 14 · Tailwind · Netlify Functions (via plugin)
+# Stack: Next.js 14 · Tailwind · @netlify/plugin-nextjs
+# Last updated: 2026-03-18
 # ═══════════════════════════════════════════════════════════════
 # KEEP THIS FILE IN SYNC WITH EVERY PROJECT UPDATE:
-#   - New API routes → add to [[headers]] if they need CORS rules
+#   - New API routes → already covered by /api/* wildcard header
 #   - New env vars   → document in [build.environment] comments
-#   - Domain change  → update ALLOWED_ORIGIN and [[headers]] origin
+#   - Domain change  → update ALLOWED_ORIGIN and Access-Control-Allow-Origin
 # ═══════════════════════════════════════════════════════════════
 
 # ── BUILD ──────────────────────────────────────────────────────
@@ -19,11 +20,15 @@
   NODE_VERSION = "18"
   # REQUIRED env vars — set in Netlify UI → Site Settings → Environment Variables:
   #
-  #   BASIC_AUTH_USER          = ramprate
-  #   BASIC_AUTH_PASSWORD      = vcos2026   (change to something strong)
+  #   AUTH_SECRET              = any long random string (signs session cookies)
+  #   AUTH_USERS               = username:password,username2:password2
+  #                              Current users: ramprate, tony, kim
+  #                              To add a user: append ,newuser:newpass and redeploy
   #   CLICKUP_API_KEY          = pk_87408701_...
   #   CLICKUP_WORKSPACE_ID     = 10643959
   #   SLACK_BOT_TOKEN          = xoxb-...
+  #                              Required scopes: channels:history, channels:read,
+  #                              users:read, chat:write
   #   FIREFLIES_API_KEY        = d109cc2...
   #   ALLOWED_ORIGIN           = https://vsoc.netlify.app/
 
@@ -41,14 +46,16 @@
     Permissions-Policy      = "camera=(), microphone=(), geolocation=()"
 
 # ── CORS — API routes ──────────────────────────────────────────
-# Covers all current routes:
+# Wildcard covers all current routes:
+#   /api/auth/login
+#   /api/auth/logout
+#   /api/auth/signup
 #   /api/slack-stats
 #   /api/clickup-tasks
 #   /api/weekly-reports
 #   /api/systems-status
 #   /api/share-slack
 #   /api/share-clickup
-# Add new routes here as they are created.
 [[headers]]
   for = "/api/*"
   [headers.values]
