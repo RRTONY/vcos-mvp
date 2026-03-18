@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { useRefresh } from '@/components/RefreshContext'
+import { ShareSlackButton } from '@/components/ShareButtons'
 
 interface Member {
   name: string
@@ -137,6 +138,18 @@ export default function CompliancePage() {
                 <span className="badge-red text-xs">Missing</span>
               </div>
             ))
+          )}
+          {missing.length > 0 && (
+            <div className="mt-3">
+              <ShareSlackButton
+                label="Alert Missing Members in Slack"
+                message={[
+                  `⚠️ *Weekly Report — Missing Submissions*`,
+                  missing.map(m => `• ${m.name} (${m.role})`).join('\n'),
+                  `Please submit your report in VCOS today.`,
+                ].join('\n')}
+              />
+            </div>
           )}
           <div className="mt-3 text-xs text-ink3">
             Full exception report:{' '}

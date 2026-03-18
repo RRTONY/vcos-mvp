@@ -2,6 +2,7 @@
 
 import { useState } from 'react'
 import { useToast } from '@/components/Toast'
+import { ShareSlackButton, ShareClickUpButton } from '@/components/ShareButtons'
 
 interface Loop {
   id: string
@@ -64,12 +65,17 @@ export default function OpenLoopsPage() {
                   </div>
                   <p className="text-sm leading-relaxed">{l.text}</p>
                 </div>
-                <button
-                  onClick={() => resolve(l.id)}
-                  className="btn-secondary flex-shrink-0"
-                >
-                  Resolve
-                </button>
+                <div className="flex flex-col gap-1.5 flex-shrink-0">
+                  <ShareClickUpButton
+                    title={`[VCOS Loop] ${l.owner} — ${l.due}`}
+                    description={l.text}
+                    priority={l.p === 'critical' ? 1 : 2}
+                    label="→ ClickUp"
+                  />
+                  <button onClick={() => resolve(l.id)} className="btn-secondary">
+                    ✓ Resolve
+                  </button>
+                </div>
               </div>
             </div>
           )

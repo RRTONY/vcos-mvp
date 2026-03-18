@@ -4,6 +4,7 @@ import { useEffect, useState, useCallback } from 'react'
 import StatBox from '@/components/StatBox'
 import ProgressBar from '@/components/ProgressBar'
 import { useRefresh } from '@/components/RefreshContext'
+import { ShareSlackButton } from '@/components/ShareButtons'
 
 interface SlackData {
   weeklyReports?: { filed: string[]; missing: string[]; week: string }
@@ -215,6 +216,31 @@ export default function DashboardPage() {
               <div className="text-xs font-bold uppercase tracking-widest text-ink3 mt-0.5">{s.label}</div>
             </div>
           ))}
+        </div>
+      )}
+
+      {/* Share bar */}
+      {!loading && (
+        <div className="flex flex-wrap gap-2 mb-6">
+          <ShareSlackButton
+            label="Post Status to Slack"
+            message={[
+              `📊 *VCOS Status Update — Week of ${week}*`,
+              `Reports Filed: ${filed.length} (${filed.map(n => n.split(' ')[0]).join(', ') || 'none'})`,
+              missing.length ? `Missing: ${missing.map(n => n.split(' ')[0]).join(', ')}` : 'All reports filed ✅',
+              clickup ? `CRM: ${clickup.overduePercent}% overdue (${clickup.overdue}/${clickup.totalTasks} tasks)` : '',
+              `BILL.com: 12 sync conflicts unresolved`,
+              `_Posted from Visual Chief of Staff_`,
+            ].filter(Boolean).join('\n')}
+          />
+          <a
+            href="https://app.clickup.com/10643959/home"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-1.5 border border-sand3 px-3 py-1.5 text-xs font-bold hover:bg-sand2 transition-colors"
+          >
+            Open ClickUp ↗
+          </a>
         </div>
       )}
 
