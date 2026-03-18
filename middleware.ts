@@ -1,29 +1,33 @@
 import { NextRequest, NextResponse } from 'next/server'
 
-const USER = process.env.BASIC_AUTH_USER ?? 'ramprate'
-const PASS = process.env.BASIC_AUTH_PASSWORD ?? ''
+// Defaults — override in Netlify env vars (Site Settings → Environment Variables)
+const USER = process.env.BASIC_AUTH_USER || 'ramprate'
+const PASS = process.env.BASIC_AUTH_PASSWORD || 'vcos2026'
 
 export function middleware(req: NextRequest) {
-  // Skip if no password configured
-  if (!PASS) return NextResponse.next()
-
   const auth = req.headers.get('authorization') ?? ''
+
   if (auth.startsWith('Basic ')) {
-    const encoded = auth.slice(6)
-    const decoded = atob(encoded)
-    const colon = decoded.indexOf(':')
-    const user = decoded.slice(0, colon)
-    const pass = decoded.slice(colon + 1)
-    if (user === USER && pass === PASS) return NextResponse.next()
+    try {
+      const decoded = atob(auth.slice(6))
+      const colon = decoded.indexOf(':')
+      const user = decoded.slice(0, colon)
+      const pass = decoded.slice(colon + 1)
+      if (user === USER && pass === PASS) return NextResponse.next()
+    } catch {
+      // malformed auth header — fall through to 401
+    }
   }
 
-  return new NextResponse('Unauthorized — Visual Chief of Staff is private.', {
+  return new NextResponse('Unauthorized', {
     status: 401,
-    headers: { 'WWW-Authenticate': 'Basic realm="Visual Chief of Staff"' },
+    headers: {
+      'WWW-Authenticate': 'Basic realm="Visual Chief of Staff", charset="UTF-8"',
+      'Content-Type': 'text/plain',
+    },
   })
 }
 
 export const config = {
-  // Protect all pages but NOT api routes (they're server-side and key-protected)
-  matcher: ['/((?!api|_next/static|_next/image|favicon\\.ico).*)'],
+  matcher: ['/((?!_next/static|_next/image|favicon\\.ico).*)'],
 }
