@@ -7,12 +7,14 @@ const TEAM_NAMES = [
   'Rob Holmes',
   'Alex Veytsel',
   'Josh Bykowski',
-  'Kimberly / Chase',
+  'Kim',
+  'Chase',
   'Daniel Baez',
   'Ben Sheppard',
+  'Tony',
 ]
 
-const HOURS_MEMBERS = ['Rob Holmes', 'Alex Veytsel', 'Josh Bykowski', 'Ben Sheppard', 'Daniel Baez', 'Kim / Chase']
+const HOURS_MEMBERS = ['Rob Holmes', 'Alex Veytsel', 'Josh Bykowski', 'Ben Sheppard', 'Daniel Baez', 'Kim', 'Chase']
 
 interface CheckState {
   invoiceSubmitted: boolean

@@ -2,7 +2,20 @@ import { NextResponse } from 'next/server'
 import { channelHistory, usersList, conversationsList } from '@/lib/slack'
 
 const WEEKLY_REPORTS_CHANNEL = 'C08K6KM53FV'
-const FULL_TEAM = ['Rob Holmes', 'Alex Veytsel', 'Josh Bykowski', 'Kim / Chase', 'Daniel Baez', 'Ben Sheppard']
+const FULL_TEAM = ['Rob Holmes', 'Alex Veytsel', 'Josh Bykowski', 'Kim', 'Chase', 'Daniel Baez', 'Ben Sheppard', 'Tony']
+
+// Maps display name → Slack real_name / username patterns to match against
+// Slack real_name comes from usersList(); username (name field) is the handle
+const SLACK_MATCH: Record<string, string[]> = {
+  'Rob Holmes':    ['rob holmes', 'rob'],
+  'Alex Veytsel':  ['alex veytsel', 'alex'],
+  'Josh Bykowski': ['josh bykowski', 'josh'],
+  'Kim':           ['kimberly dofredo', 'kimberly', 'kim'],
+  'Chase':         ['chase adrian', 'chase'],
+  'Daniel Baez':   ['daniel baez', 'daniel'],
+  'Ben Sheppard':  ['ben sheppard', 'ben'],
+  'Tony':          ['tony greenberg', 'rampratetony', 'tonyg', 'tony'],
+}
 
 function weekLabel() {
   const now = new Date()
@@ -48,17 +61,22 @@ export async function GET() {
       messages.map((m) => (m.user ? userMap[m.user] : '')).filter(Boolean)
     ))
 
+    // Also build handle map (name field = Slack username/handle)
+    const handleMap: Record<string, string> = {}
+    for (const u of allUsers) {
+      if (u.id) handleMap[u.id] = u.name ?? ''
+    }
+    const posterHandles = Array.from(new Set(
+      messages.map((m) => (m.user ? handleMap[m.user] : '')).filter(Boolean)
+    ))
+
     const filed: string[] = []
     const missing: string[] = []
     for (const member of FULL_TEAM) {
-      const firstName = member.split(' ')[0].toLowerCase()
-      const kimAlias = member === 'Kim / Chase'
-      const didFile = posters.some((p) => {
-        const pl = p.toLowerCase()
-        return kimAlias
-          ? pl.includes('kim') || pl.includes('chase')
-          : pl.includes(firstName)
-      })
+      const aliases = SLACK_MATCH[member] ?? [member.split(' ')[0].toLowerCase()]
+      const didFile =
+        posters.some((p) => aliases.some((a) => p.toLowerCase().includes(a))) ||
+        posterHandles.some((h) => aliases.some((a) => h.toLowerCase().includes(a)))
       if (didFile) filed.push(member)
       else missing.push(member)
     }

@@ -16,10 +16,11 @@ const BASE_TEAM: Member[] = [
   { name: 'Rob Holmes', role: 'BD · Grants', rate: 91, filed: true, bt: 'Not integrated' },
   { name: 'Alex Veytsel', role: 'Equity Partner', rate: 82, filed: false, bt: 'Not integrated' },
   { name: 'Josh Bykowski', role: 'Legal · BD', rate: 73, filed: false, bt: 'Not integrated' },
-  { name: 'Kim / Chase', role: 'Executive Ops', rate: 100, filed: true, bt: 'Narrative only' },
+  { name: 'Kim', role: 'Executive Ops', rate: 100, filed: true, bt: 'Narrative only' },
+  { name: 'Chase', role: 'Executive Ops', rate: 100, filed: true, bt: 'Narrative only' },
   { name: 'Daniel Baez', role: 'Webmaster', rate: 100, filed: true, bt: 'N/A (new)' },
   { name: 'Ben Sheppard', role: 'ImpactSoul Contractor', rate: 0, filed: false, bt: 'First due Mar 23' },
-  { name: 'Tony Greenberg', role: 'CEO', rate: 0, filed: false, bt: 'Not required' },
+  { name: 'Tony', role: 'CEO', rate: 0, filed: false, bt: 'N/A' },
 ]
 
 const BT_CHECKS = [
@@ -45,14 +46,14 @@ export default function CompliancePage() {
         setTeam((prev) =>
           prev.map((m) => ({
             ...m,
-            filed: m.name === 'Tony Greenberg' ? false : filed.includes(m.name),
+            filed: filed.includes(m.name),
           }))
         )
       })
       .catch(() => {})
   }, [refreshKey])
 
-  const missing = team.filter((m) => !m.filed && m.name !== 'Tony Greenberg')
+  const missing = team.filter((m) => !m.filed && m.name !== 'Tony')
 
   return (
     <div>

@@ -26,12 +26,14 @@ interface ClickUpData {
 
 // Team roster — cuKey is the ClickUp username prefix to match assigneeStats keys
 const TEAM = [
-  { name: 'Kim', full: 'Kim / Chase', role: 'Executive Ops', cuKey: 'kim' },
+  { name: 'Kim', full: 'Kim', role: 'Executive Ops', cuKey: 'kim' },
+  { name: 'Chase', full: 'Chase', role: 'Executive Ops', cuKey: 'chase' },
   { name: 'Rob', full: 'Rob Holmes', role: 'BD · Grants', cuKey: 'rob' },
   { name: 'Alex', full: 'Alex Veytsel', role: 'Equity Partner', cuKey: 'alex' },
   { name: 'Josh', full: 'Josh Bykowski', role: 'Legal · BD', cuKey: 'josh' },
   { name: 'Daniel', full: 'Daniel Baez', role: 'Webmaster', cuKey: 'daniel' },
   { name: 'Ben', full: 'Ben Sheppard', role: 'ImpactSoul Contractor', cuKey: 'ben' },
+  { name: 'Tony', full: 'Tony', role: 'CEO', cuKey: 'tonyg' },
 ]
 
 const OKRS = [

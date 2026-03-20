@@ -29,10 +29,10 @@ interface Meeting {
   keywords: string[]; url: string
 }
 
-const TEAM = ['Rob Holmes', 'Alex Veytsel', 'Josh Bykowski', 'Kim / Chase', 'Daniel Baez', 'Ben Sheppard']
+const TEAM = ['Rob Holmes', 'Alex Veytsel', 'Josh Bykowski', 'Kim', 'Chase', 'Daniel Baez', 'Ben Sheppard', 'Tony']
 const TEAM_CU: Record<string, string> = {
   'Rob Holmes': 'rob', 'Alex Veytsel': 'alex', 'Josh Bykowski': 'josh',
-  'Kim / Chase': 'kim', 'Daniel Baez': 'daniel', 'Ben Sheppard': 'ben',
+  'Kim': 'kim', 'Chase': 'chase', 'Daniel Baez': 'daniel', 'Ben Sheppard': 'ben', 'Tony': 'tonyg',
 }
 
 const OKRS = [
