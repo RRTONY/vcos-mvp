@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState, useRef } from 'react'
+import { useEffect, useState, useRef, useCallback } from 'react' // eslint-disable-line @typescript-eslint/no-unused-vars
 import { useRefresh } from '@/components/RefreshContext'
 import { ShareSlackButton } from '@/components/ShareButtons'
 
@@ -45,7 +45,8 @@ const OKRS = [
   { id: 'OKR06', label: 'Website Migration', pct: 100, note: 'ramprate.com DONE ✓' },
 ]
 
-const REFRESH_INTERVAL = 5 * 60 * 1000
+const SLACK_INTERVAL = 30 * 1000   // 30 seconds — critical (who filed reports)
+const CU_INTERVAL = 60 * 1000      // 60 seconds — tasks
 
 function findStats(
   assigneeStats: Record<string, { total: number; overdue: number; urgent: number }> | undefined,
@@ -177,40 +178,37 @@ export default function DashboardPage() {
   const [slack, setSlack] = useState<SlackData | null>(null)
   const [clickup, setClickUp] = useState<ClickUpData | null>(null)
   const [loading, setLoading] = useState(true)
-  const [lastFetched, setLastFetched] = useState('')
-  const { refreshKey } = useRefresh()
+  const { refreshKey, setNextRefresh } = useRefresh()
   const prevKey = useRef(refreshKey)
 
-  useEffect(() => {
-    let cancelled = false
-    async function load() {
-      setLoading(true)
-      const [s, c] = await Promise.all([
-        fetch('/api/slack-stats').then((r) => r.json()).catch(() => null),
-        fetch('/api/clickup-tasks').then((r) => r.json()).catch(() => null),
-      ])
-      if (!cancelled) { setSlack(s); setClickUp(c); setLoading(false); setLastFetched(new Date().toLocaleTimeString()) }
+  const load = useCallback(async (cancelled: { v: boolean }) => {
+    setLoading(true)
+    const [s, c] = await Promise.all([
+      fetch('/api/slack-stats').then((r) => r.json()).catch(() => null),
+      fetch('/api/clickup-tasks').then((r) => r.json()).catch(() => null),
+    ])
+    if (!cancelled.v) {
+      setSlack(s)
+      setClickUp(c)
+      setLoading(false)
+      setNextRefresh(Date.now() + SLACK_INTERVAL)
     }
-    load()
-    const id = setInterval(load, REFRESH_INTERVAL)
-    return () => { cancelled = true; clearInterval(id) }
-  }, [])
+  }, [setNextRefresh])
+
+  useEffect(() => {
+    const cancelled = { v: false }
+    load(cancelled)
+    const id = setInterval(() => load(cancelled), SLACK_INTERVAL)
+    return () => { cancelled.v = true; clearInterval(id) }
+  }, [load])
 
   useEffect(() => {
     if (refreshKey === prevKey.current) return
     prevKey.current = refreshKey
-    let cancelled = false
-    async function reload() {
-      setLoading(true)
-      const [s, c] = await Promise.all([
-        fetch('/api/slack-stats').then((r) => r.json()).catch(() => null),
-        fetch('/api/clickup-tasks').then((r) => r.json()).catch(() => null),
-      ])
-      if (!cancelled) { setSlack(s); setClickUp(c); setLoading(false); setLastFetched(new Date().toLocaleTimeString()) }
-    }
-    reload()
-    return () => { cancelled = true }
-  }, [refreshKey])
+    const cancelled = { v: false }
+    load(cancelled)
+    return () => { cancelled.v = true }
+  }, [refreshKey, load])
 
   const wr = slack?.weeklyReports
   const filed = wr?.filed ?? []
@@ -289,7 +287,7 @@ export default function DashboardPage() {
       <div className="flex items-center justify-between mt-6 mb-4">
         <div>
           <h1 className="font-display text-2xl tracking-widest">CEO COMMAND</h1>
-          <div className="text-xs text-ink4 mt-0.5">Week of {week}{lastFetched ? ` · Updated ${lastFetched}` : ''}</div>
+          <div className="text-xs text-ink4 mt-0.5">Week of {week}</div>
         </div>
         {!loading && (
           <ShareSlackButton label="Post Brief" message={shareMsg} />

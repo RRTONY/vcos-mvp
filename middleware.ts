@@ -1,31 +1,36 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { COOKIE_NAME, verifySession } from '@/lib/auth'
 
-// Defaults — override in Netlify env vars (Site Settings → Environment Variables)
-const USER = process.env.BASIC_AUTH_USER || 'ramprate'
-const PASS = process.env.BASIC_AUTH_PASSWORD || 'vcos2026'
+export async function middleware(req: NextRequest) {
+  // Skip auth for login page and auth API routes
+  const { pathname } = req.nextUrl
+  if (
+    pathname.startsWith('/login') ||
+    pathname.startsWith('/signup') ||
+    pathname.startsWith('/api/auth') ||
+    pathname.startsWith('/_next') ||
+    pathname === '/favicon.ico' ||
+    pathname === '/robots.txt'
+  ) {
+    return NextResponse.next()
+  }
 
-export function middleware(req: NextRequest) {
-  const auth = req.headers.get('authorization') ?? ''
-
-  if (auth.startsWith('Basic ')) {
-    try {
-      const decoded = atob(auth.slice(6))
-      const colon = decoded.indexOf(':')
-      const user = decoded.slice(0, colon)
-      const pass = decoded.slice(colon + 1)
-      if (user === USER && pass === PASS) return NextResponse.next()
-    } catch {
-      // malformed auth header — fall through to 401
+  const token = req.cookies.get(COOKIE_NAME)?.value
+  if (token) {
+    const session = await verifySession(token)
+    if (session) {
+      // Pass username + role as headers for API routes to read
+      const res = NextResponse.next()
+      res.headers.set('x-user', session.username)
+      res.headers.set('x-role', session.role)
+      return res
     }
   }
 
-  return new NextResponse('Unauthorized', {
-    status: 401,
-    headers: {
-      'WWW-Authenticate': 'Basic realm="Visual Chief of Staff", charset="UTF-8"',
-      'Content-Type': 'text/plain',
-    },
-  })
+  // Not authenticated — redirect to login
+  const loginUrl = new URL('/login', req.url)
+  loginUrl.searchParams.set('from', pathname)
+  return NextResponse.redirect(loginUrl)
 }
 
 export const config = {

@@ -3,7 +3,7 @@
 # Site: https://vsoc.netlify.app
 # Owner: Tony Greenberg / RampRate · ImpactSoul
 # Stack: Next.js 14 · Tailwind · @netlify/plugin-nextjs
-# Last updated: 2026-03-18
+# Last updated: 2026-03-24
 # ═══════════════════════════════════════════════════════════════
 # KEEP THIS FILE IN SYNC WITH EVERY PROJECT UPDATE:
 #   - New API routes → already covered by /api/* wildcard header
@@ -21,9 +21,13 @@
   # REQUIRED env vars — set in Netlify UI → Site Settings → Environment Variables:
   #
   #   AUTH_SECRET              = any long random string (signs session cookies)
-  #   AUTH_USERS               = username:password,username2:password2
-  #                              Current users: ramprate, tony, kim
-  #                              To add a user: append ,newuser:newpass and redeploy
+  #   AUTH_USERS               = tony:vcos2026:admin,ramprate:vcos2026:admin,kim:vcos2026:user,chase:vcos2026:user,rob:vcos2026:user,alex:vcos2026:user,josh:vcos2026:user,daniel:vcos2026:user,ben:vcos2026:user
+  #                              Format: username:password:role
+  #                              role = 'admin' (sees rates + amounts) or 'user' (rates hidden)
+  #                              To add: append ,newuser:pass:user and redeploy
+  #
+  #   WEBWORK_API_KEY          = (pending — get from WebWork → Settings → API Keys)
+  #   WEBWORK_COMPANY_ID       = (pending — from WebWork account)
   #   CLICKUP_API_KEY          = pk_87408701_...
   #   CLICKUP_WORKSPACE_ID     = 10643959
   #   SLACK_BOT_TOKEN          = xoxb-...
@@ -57,6 +61,9 @@
 #   /api/share-slack
 #   /api/share-clickup
 #   /api/fireflies-meetings
+#   /api/auth/me
+#   /api/webwork          (pending WebWork API key)
+#   /api/invoices         (pending Braintrust PDF upload feature)
 [[headers]]
   for = "/api/*"
   [headers.values]
