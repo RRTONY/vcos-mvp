@@ -8,40 +8,6 @@ function getSecret(): string {
   return process.env.AUTH_SECRET ?? 'vcos-fallback-secret-change-me'
 }
 
-// Parse AUTH_USERS env var: "tony:pass:admin,kim:pass:user"
-export function getUsers(): Record<string, { password: string; role: string }> {
-  const raw = process.env.AUTH_USERS ?? 'ramprate:vcos2026:admin,tony:vcos2026:admin'
-  const users: Record<string, { password: string; role: string }> = {}
-  for (const entry of raw.split(',')) {
-    const parts = entry.trim().split(':')
-    if (parts.length >= 2) {
-      const [username, password, role = 'user'] = parts
-      users[username.toLowerCase()] = { password, role }
-    }
-  }
-  return users
-}
-
-// Legacy plaintext check (AUTH_USERS fallback only)
-export function validateCredentials(username: string, password: string): string | null {
-  const users = getUsers()
-  const user = users[username.toLowerCase()]
-  if (!user) return null
-  if (user.password !== password) return null
-  return user.role
-}
-
-async function getKey(secret: string): Promise<CryptoKey> {
-  const enc = new TextEncoder()
-  return crypto.subtle.importKey(
-    'raw',
-    enc.encode(secret),
-    { name: 'HMAC', hash: 'SHA-256' },
-    false,
-    ['sign', 'verify']
-  )
-}
-
 function toBase64url(buf: ArrayBuffer): string {
   return btoa(String.fromCharCode(...new Uint8Array(buf)))
     .replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '')
@@ -53,6 +19,17 @@ function fromBase64url(str: string): ArrayBuffer {
   const buf = new Uint8Array(bin.length)
   for (let i = 0; i < bin.length; i++) buf[i] = bin.charCodeAt(i)
   return buf.buffer
+}
+
+async function getKey(secret: string): Promise<CryptoKey> {
+  const enc = new TextEncoder()
+  return crypto.subtle.importKey(
+    'raw',
+    enc.encode(secret),
+    { name: 'HMAC', hash: 'SHA-256' },
+    false,
+    ['sign', 'verify']
+  )
 }
 
 export async function createSession(username: string, role: string): Promise<string> {

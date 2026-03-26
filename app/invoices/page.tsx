@@ -72,6 +72,7 @@ export default function InvoicesPage() {
   }
 
   const isAdmin = me?.role === 'admin'
+  const isTony = ['tony', 'ramprate'].includes(me?.username ?? '')
   const visible = isAdmin ? invoices : invoices.filter(inv =>
     inv.contractor.toLowerCase().includes(me?.username?.toLowerCase() ?? '____')
   )
@@ -127,11 +128,11 @@ export default function InvoicesPage() {
                     <th className="text-left py-2 px-3 text-xs font-extrabold uppercase tracking-widest text-ink3">Invoice</th>
                     <th className="text-left py-2 px-3 text-xs font-extrabold uppercase tracking-widest text-ink3">Period</th>
                     <th className="text-right py-2 px-3 text-xs font-extrabold uppercase tracking-widest text-ink3">Hours</th>
+                    {isTony && (
+                      <th className="text-right py-2 px-3 text-xs font-extrabold uppercase tracking-widest text-ink3">Rate</th>
+                    )}
                     {isAdmin && (
-                      <>
-                        <th className="text-right py-2 px-3 text-xs font-extrabold uppercase tracking-widest text-ink3">Rate</th>
-                        <th className="text-right py-2 px-3 text-xs font-extrabold uppercase tracking-widest text-ink3">Amount</th>
-                      </>
+                      <th className="text-right py-2 px-3 text-xs font-extrabold uppercase tracking-widest text-ink3">Amount</th>
                     )}
                     <th className="text-center py-2 px-3 text-xs font-extrabold uppercase tracking-widest text-ink3">Status</th>
                     {isAdmin && <th className="py-2 px-3" />}
@@ -144,15 +145,15 @@ export default function InvoicesPage() {
                       <td className="py-2.5 px-3 font-mono text-xs text-ink3">{inv.invoiceNumber || '—'}</td>
                       <td className="py-2.5 px-3 text-xs text-ink3">{inv.period || '—'}</td>
                       <td className="py-2.5 px-3 text-right font-mono text-sm">{inv.hours > 0 ? inv.hours : '—'}</td>
+                      {isTony && (
+                        <td className="py-2.5 px-3 text-right font-mono text-sm">
+                          {inv.rate > 0 ? `$${inv.rate}/hr` : '—'}
+                        </td>
+                      )}
                       {isAdmin && (
-                        <>
-                          <td className="py-2.5 px-3 text-right font-mono text-sm">
-                            {inv.rate > 0 ? `$${inv.rate}/hr` : '—'}
-                          </td>
-                          <td className="py-2.5 px-3 text-right font-mono text-sm font-bold">
-                            {inv.amount > 0 ? `$${inv.amount.toLocaleString()}` : '—'}
-                          </td>
-                        </>
+                        <td className="py-2.5 px-3 text-right font-mono text-sm font-bold">
+                          {inv.amount > 0 ? `$${inv.amount.toLocaleString()}` : '—'}
+                        </td>
                       )}
                       <td className="py-2.5 px-3 text-center">
                         <span className={`text-[10px] font-bold px-1.5 py-0.5 uppercase ${STATUS_STYLE[inv.status] ?? STATUS_STYLE.unknown}`}>
@@ -178,7 +179,7 @@ export default function InvoicesPage() {
 
       {isAdmin && (
         <div className="text-xs text-ink4 mt-2">
-          Rates and amounts are visible to admin users only. Regular users see their own rows without financial details.
+          Amounts are visible to all admins. Rates are visible to Tony only.
         </div>
       )}
     </div>

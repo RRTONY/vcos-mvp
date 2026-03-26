@@ -4,6 +4,25 @@ import { useEffect, useState, useRef } from 'react'
 import { useRefresh } from '@/components/RefreshContext'
 import { ShareSlackButton } from '@/components/ShareButtons'
 
+// ─── Types ──────────────────────────────────────────────────────────────────
+
+interface DailyReport {
+  report_date: string
+  reports_filed: string[]
+  reports_missing: string[]
+  overdue_count: number
+  urgent_count: number
+  total_tasks: number
+  team_hours: Record<string, number>
+  slack_message_ts: string | null
+}
+
+interface WebWorkMember {
+  username: string
+  totalHours: number
+  byDay: { date: string; hours: number }[]
+}
+
 interface SlackData {
   weeklyReports?: { filed: string[]; missing: string[]; week: string }
   slackStats?: { totalMessages: number; activeMembers: number; channels: number }
@@ -178,13 +197,26 @@ function MeetingCard({ m }: { m: Meeting }) {
 }
 
 export default function ReportsPage() {
+  const [tab, setTab] = useState<'weekly' | 'daily' | 'hours'>('weekly')
   const [slack, setSlack] = useState<SlackData | null>(null)
   const [clickup, setClickUp] = useState<ClickUpData | null>(null)
   const [meetings, setMeetings] = useState<Meeting[]>([])
   const [loading, setLoading] = useState(true)
   const [lastFetched, setLastFetched] = useState('')
+  const [isAdmin, setIsAdmin] = useState(false)
+  const [dailyHistory, setDailyHistory] = useState<DailyReport[]>([])
+  const [dailyLoading, setDailyLoading] = useState(false)
+  const [generatingReport, setGeneratingReport] = useState(false)
+  const [webworkData, setWebworkData] = useState<{ week: string[]; members: WebWorkMember[] } | null>(null)
+  const [webworkLoading, setWebworkLoading] = useState(false)
   const { refreshKey } = useRefresh()
   const prevKey = useRef(refreshKey)
+
+  useEffect(() => {
+    fetch('/api/auth/me').then(r => r.ok ? r.json() : null)
+      .then(d => setIsAdmin(d?.role === 'admin'))
+      .catch(() => {})
+  }, [])
 
   async function fetchAll(signal?: AbortSignal) {
     setLoading(true)
@@ -200,11 +232,37 @@ export default function ReportsPage() {
     setLastFetched(new Date().toLocaleTimeString())
   }
 
+  async function fetchDailyHistory() {
+    setDailyLoading(true)
+    const res = await fetch('/api/reports/daily').then(r => r.json()).catch(() => [])
+    setDailyHistory(res ?? [])
+    setDailyLoading(false)
+  }
+
+  async function fetchWebwork() {
+    setWebworkLoading(true)
+    const res = await fetch('/api/webwork').then(r => r.json()).catch(() => null)
+    setWebworkData(res)
+    setWebworkLoading(false)
+  }
+
+  async function generateNow() {
+    setGeneratingReport(true)
+    await fetch('/api/reports/daily', { method: 'POST' })
+    await fetchDailyHistory()
+    setGeneratingReport(false)
+  }
+
   useEffect(() => {
     const ctrl = new AbortController()
     fetchAll(ctrl.signal)
     return () => ctrl.abort()
   }, [])
+
+  useEffect(() => {
+    if (tab === 'daily') fetchDailyHistory()
+    if (tab === 'hours') fetchWebwork()
+  }, [tab])
 
   useEffect(() => {
     if (refreshKey === prevKey.current) return
@@ -237,9 +295,113 @@ export default function ReportsPage() {
     `_Posted from Visual Chief of Staff_`,
   ].join('\n')
 
+  const TABS = [
+    { id: 'weekly', label: 'Weekly Roll-Up' },
+    { id: 'daily', label: 'Daily History' },
+    { id: 'hours', label: 'Team Hours' },
+  ] as const
+
   return (
     <div>
-      <div className="flex items-center justify-between mt-6 mb-1">
+      {/* Tab bar */}
+      <div className="flex gap-0 border-b border-sand3 mt-6 mb-4">
+        {TABS.map(t => (
+          <button
+            key={t.id}
+            onClick={() => setTab(t.id)}
+            className={`px-4 py-2 text-xs font-bold uppercase tracking-widest border-b-2 transition-colors ${
+              tab === t.id ? 'border-ink text-ink' : 'border-transparent text-ink4 hover:text-ink3'
+            }`}
+          >
+            {t.label}
+          </button>
+        ))}
+        {isAdmin && tab === 'daily' && (
+          <button
+            onClick={generateNow}
+            disabled={generatingReport}
+            className="ml-auto btn-primary text-xs py-1 px-3 mb-1"
+          >
+            {generatingReport ? 'Generating…' : 'Generate Now'}
+          </button>
+        )}
+      </div>
+
+      {/* ── DAILY HISTORY TAB ────────────────────────────────── */}
+      {tab === 'daily' && (
+        <div className="space-y-3">
+          {dailyLoading ? (
+            <div className="text-ink4 text-sm animate-pulse">Loading history…</div>
+          ) : dailyHistory.length === 0 ? (
+            <div className="card p-6 text-center text-ink4 text-sm">
+              No daily reports yet.{isAdmin && ' Click "Generate Now" to create today\'s report.'}
+            </div>
+          ) : (
+            dailyHistory.map(r => (
+              <div key={r.report_date} className="card divide-y divide-sand3">
+                <div className="flex items-center justify-between px-4 py-3">
+                  <span className="font-bold text-sm">{new Date(r.report_date + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' })}</span>
+                  <div className="flex gap-4 text-xs text-ink3">
+                    <span>✅ {r.reports_filed?.length ?? 0} filed</span>
+                    {(r.reports_missing?.length ?? 0) > 0 && <span className="text-red-600">❌ {r.reports_missing.length} missing</span>}
+                    <span>{r.overdue_count} overdue</span>
+                    <span>{r.urgent_count} urgent</span>
+                  </div>
+                </div>
+                {r.team_hours && Object.keys(r.team_hours).length > 0 && (
+                  <div className="px-4 py-2 flex flex-wrap gap-3">
+                    {Object.entries(r.team_hours).map(([name, hrs]) => (
+                      <span key={name} className="text-xs text-ink3">
+                        <span className="font-semibold capitalize">{name}</span> {hrs}h
+                      </span>
+                    ))}
+                  </div>
+                )}
+              </div>
+            ))
+          )}
+        </div>
+      )}
+
+      {/* ── TEAM HOURS TAB ───────────────────────────────────── */}
+      {tab === 'hours' && (
+        <div className="space-y-3">
+          {webworkLoading ? (
+            <div className="text-ink4 text-sm animate-pulse">Loading WebWork hours…</div>
+          ) : !webworkData ? (
+            <div className="card p-6 text-center text-ink4 text-sm">Failed to load WebWork data.</div>
+          ) : (
+            <>
+              <div className="text-xs text-ink3 mb-2">
+                Week of {webworkData.week?.[0]} – {webworkData.week?.[6]}
+              </div>
+              <div className="card divide-y divide-sand3">
+                {[...webworkData.members].sort((a, b) => b.totalHours - a.totalHours).map(m => (
+                  <div key={m.username} className="flex items-center gap-3 px-4 py-3">
+                    <div className="w-7 h-7 flex items-center justify-center text-xs font-bold bg-sand2 text-ink flex-shrink-0">
+                      {m.username[0].toUpperCase()}
+                    </div>
+                    <span className="text-sm font-semibold capitalize flex-1">{m.username}</span>
+                    <div className="flex items-center gap-3">
+                      <div className="w-24 h-1.5 bg-sand3">
+                        <div className="h-full bg-black" style={{ width: `${Math.min(100, (m.totalHours / 40) * 100)}%` }} />
+                      </div>
+                      <span className="font-mono text-sm w-12 text-right">{m.totalHours}h</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+              <div className="text-xs text-ink4 text-right">
+                Total: {Math.round(webworkData.members.reduce((s, m) => s + m.totalHours, 0) * 10) / 10}h across team
+              </div>
+            </>
+          )}
+        </div>
+      )}
+
+      {/* ── WEEKLY ROLL-UP TAB ───────────────────────────────── */}
+      {tab === 'weekly' && <>
+      <div className="flex items-center justify-between mb-1">
         <div className="slbl mb-0">Weekly Roll-Up — {week}</div>
         {lastFetched && <span className="text-xs text-ink4">Updated {lastFetched}</span>}
       </div>
@@ -437,6 +599,7 @@ export default function ReportsPage() {
           </a>
         </div>
       )}
+      </>}
     </div>
   )
 }

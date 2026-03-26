@@ -26,8 +26,11 @@
   #                              role = 'admin' (sees rates + amounts) or 'user' (rates hidden)
   #                              To add: append ,newuser:pass:user and redeploy
   #
-  #   WEBWORK_API_KEY          = (pending — get from WebWork → Settings → API Keys)
-  #   WEBWORK_COMPANY_ID       = (pending — from WebWork account)
+  #   WEBWORK_API_KEY          = eyJ0eXAiOiJKV1QiLC... (JWT token from WebWork)
+  #   WEBWORK_COMPANY_ID       = 301393
+  #   SUPABASE_URL             = https://wfjndyzbiourateeyinw.supabase.co
+  #   SUPABASE_SERVICE_KEY     = sb_secret_...
+  #   CRON_SECRET              = any random string (secures scheduled function calls)
   #   CLICKUP_API_KEY          = pk_87408701_...
   #   CLICKUP_WORKSPACE_ID     = 10643959
   #   SLACK_BOT_TOKEN          = xoxb-...
