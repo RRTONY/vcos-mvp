@@ -70,7 +70,7 @@ export default function BdPage() {
     setToday(new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' }))
 
     fetch('/api/auth/me').then(r => r.ok ? r.json() : null)
-      .then(d => setIsAdmin(d?.role === 'admin'))
+      .then(d => setIsAdmin(['admin', 'owner'].includes(d?.role ?? '')))
       .catch(() => {})
 
     // Fetch KPI data from all sources in parallel

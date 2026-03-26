@@ -85,6 +85,7 @@ export default function Topbar() {
           <div className="flex items-center gap-1.5 ml-1">
             <span className="text-white/50 text-xs hidden sm:block">
               {user.username}
+              {user.role === 'owner' && <span className="ml-1 text-white/30">·owner</span>}
               {user.role === 'admin' && <span className="ml-1 text-white/30">·admin</span>}
             </span>
             <button

@@ -152,7 +152,7 @@ export default function UsersPage() {
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-2">
                 <span className="font-mono text-sm font-semibold">{user.username}</span>
-                <span className={`text-xs px-1.5 py-0.5 rounded ${user.role === 'admin' ? 'bg-amber-100 text-amber-700' : 'bg-blue-50 text-blue-600'}`}>
+                <span className={`text-xs px-1.5 py-0.5 rounded ${user.role === 'owner' ? 'bg-black text-white' : user.role === 'admin' ? 'bg-amber-100 text-amber-700' : 'bg-blue-50 text-blue-600'}`}>
                   {user.role}
                 </span>
                 {user.status === 'inactive' && (
