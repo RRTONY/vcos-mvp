@@ -3,6 +3,10 @@
 import { useEffect, useState, useRef } from 'react'
 import { useRefresh } from '@/components/RefreshContext'
 import { ShareSlackButton } from '@/components/ShareButtons'
+import { TEAM, REPORT_MEMBERS } from '@/lib/team'
+import type { Task, ClickUpData, SlackData, WebWorkMember, Meeting } from '@/lib/types'
+import { useMe } from '@/hooks/useMe'
+import StaleBadge from '@/components/StaleBadge'
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -15,43 +19,6 @@ interface DailyReport {
   total_tasks: number
   team_hours: Record<string, number>
   slack_message_ts: string | null
-}
-
-interface WebWorkMember {
-  username: string
-  totalHours: number
-  byDay: { date: string; hours: number }[]
-}
-
-interface SlackData {
-  weeklyReports?: { filed: string[]; missing: string[]; week: string }
-  slackStats?: { totalMessages: number; activeMembers: number; channels: number }
-}
-
-interface OverdueTask {
-  id: string; name: string; list: string; dueDate: string
-  priority: string; url: string; assignees: string[]
-}
-
-interface ClickUpData {
-  totalTasks?: number; overdue?: number; overduePercent?: number
-  urgent?: number; completed?: number
-  urgentDetails?: OverdueTask[]; highDetails?: OverdueTask[]
-  overdueDetails?: OverdueTask[]
-  assigneeStats?: Record<string, { total: number; overdue: number; urgent: number }>
-  tasksByAssignee?: Record<string, OverdueTask[]>
-}
-
-interface Meeting {
-  id: string; title: string; date: string; duration: string
-  participants: string[]; overview: string; actionItems: string
-  keywords: string[]; url: string
-}
-
-const TEAM = ['Rob Holmes', 'Alex Veytsel', 'Josh Bykowski', 'Kim', 'Chase', 'Daniel Baez', 'Ben Sheppard', 'Tony']
-const TEAM_CU: Record<string, string> = {
-  'Rob Holmes': 'rob', 'Alex Veytsel': 'alex', 'Josh Bykowski': 'josh',
-  'Kim': 'kim', 'Chase': 'chase', 'Daniel Baez': 'daniel', 'Ben Sheppard': 'ben', 'Tony': 'tony',
 }
 
 const OKRS = [
@@ -73,9 +40,9 @@ function Section({ title, children }: { title: string; children: React.ReactNode
 }
 
 function MemberRollup({ name, stats, tasks, didFile, flow, loading }: {
-  name: string; cuKey: string
+  name: string
   stats: { total: number; overdue: number; urgent: number } | null
-  tasks: OverdueTask[]; didFile: boolean; flow: number | null; loading: boolean
+  tasks: Task[]; didFile: boolean; flow: number | null; loading: boolean
 }) {
   const [open, setOpen] = useState(false)
   const hasIssues = (stats?.overdue ?? 0) > 0 || (stats?.urgent ?? 0) > 0 || !didFile
@@ -203,7 +170,7 @@ export default function ReportsPage() {
   const [meetings, setMeetings] = useState<Meeting[]>([])
   const [loading, setLoading] = useState(true)
   const [lastFetched, setLastFetched] = useState('')
-  const [isAdmin, setIsAdmin] = useState(false)
+  const { isAdmin } = useMe()
   const [dailyHistory, setDailyHistory] = useState<DailyReport[]>([])
   const [dailyLoading, setDailyLoading] = useState(false)
   const [generatingReport, setGeneratingReport] = useState(false)
@@ -212,18 +179,12 @@ export default function ReportsPage() {
   const { refreshKey } = useRefresh()
   const prevKey = useRef(refreshKey)
 
-  useEffect(() => {
-    fetch('/api/auth/me').then(r => r.ok ? r.json() : null)
-      .then(d => setIsAdmin(['admin', 'owner'].includes(d?.role ?? '')))
-      .catch(() => {})
-  }, [])
-
   async function fetchAll(signal?: AbortSignal) {
     setLoading(true)
     const [s, c, f] = await Promise.all([
-      fetch('/api/slack-stats', { signal }).then((r) => r.json()).catch(() => null),
-      fetch('/api/clickup-tasks', { signal }).then((r) => r.json()).catch(() => null),
-      fetch('/api/fireflies-meetings', { signal }).then((r) => r.json()).catch(() => null),
+      fetch('/api/slack-stats', { signal, cache: 'no-store' }).then((r) => r.json()).catch(() => null),
+      fetch('/api/clickup-tasks', { signal, cache: 'no-store' }).then((r) => r.json()).catch(() => null),
+      fetch('/api/fireflies-meetings', { signal, cache: 'no-store' }).then((r) => r.json()).catch(() => null),
     ])
     setSlack(s)
     setClickUp(c)
@@ -283,7 +244,7 @@ export default function ReportsPage() {
     `📊 *Weekly Roll-Up Report — Week of ${week}*`,
     ``,
     `*TEAM REPORTS*`,
-    `Filed: ${filed.length}/${TEAM.length} — ${filed.map(n => n.split(' ')[0]).join(', ') || 'none'}`,
+    `Filed: ${filed.length}/${REPORT_MEMBERS.length} — ${filed.map(n => n.split(' ')[0]).join(', ') || 'none'}`,
     missing.length ? `Missing: ${missing.map(n => n.split(' ')[0]).join(', ')}` : '✅ All filed',
     ``,
     `*CRM HEALTH*`,
@@ -405,14 +366,20 @@ export default function ReportsPage() {
       {tab === 'weekly' && <>
       <div className="flex items-center justify-between mb-1">
         <div className="slbl mb-0">Weekly Roll-Up — {week}</div>
-        {lastFetched && <span className="text-xs text-ink4">Updated {lastFetched}</span>}
+        <div className="flex items-center gap-2">
+          {lastFetched && <span className="text-xs text-ink4">Updated {lastFetched}</span>}
+          <StaleBadge
+            ageMinutes={(clickup as {_ageMinutes?: number})?._ageMinutes}
+            circuitOpen={(clickup as {_circuitOpen?: boolean})?._circuitOpen}
+          />
+        </div>
       </div>
 
       {/* Executive summary tiles */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
         {[
           {
-            value: loading ? '…' : `${filed.length}/${TEAM.length}`,
+            value: loading ? '…' : `${filed.length}/${REPORT_MEMBERS.length}`,
             label: 'Reports Filed',
             sub: loading ? '' : missing.length ? `Missing: ${missing.map(n => n.split(' ')[0]).join(', ')}` : 'All filed ✓',
             alert: !loading && missing.length > 0,
@@ -447,23 +414,21 @@ export default function ReportsPage() {
       {/* Team status roll-up */}
       <Section title="Team Assignment Roll-Up">
         <div className="space-y-2">
-          {TEAM.map((name) => {
-            const cuKey = TEAM_CU[name] ?? name.split(' ')[0].toLowerCase()
+          {TEAM.map((member) => {
             const stats = clickup?.assigneeStats
-              ? Object.entries(clickup.assigneeStats).find(([k]) => k.includes(cuKey))?.[1]
+              ? Object.entries(clickup.assigneeStats).find(([k]) => k.includes(member.cuKey))?.[1]
               : null
             const tasks = clickup?.tasksByAssignee
-              ? Object.entries(clickup.tasksByAssignee).find(([k]) => k.includes(cuKey))?.[1] ?? []
+              ? Object.entries(clickup.tasksByAssignee).find(([k]) => k.includes(member.cuKey))?.[1] ?? []
               : []
-            const didFile = filed.includes(name)
+            const didFile = filed.includes(member.name)
             const flow = stats && stats.total > 0
               ? Math.max(5, Math.round(100 - (stats.overdue / stats.total) * 100))
               : null
             return (
               <MemberRollup
-                key={name}
-                name={name}
-                cuKey={cuKey}
+                key={member.name}
+                name={member.name}
                 stats={stats ?? null}
                 tasks={tasks}
                 didFile={didFile}

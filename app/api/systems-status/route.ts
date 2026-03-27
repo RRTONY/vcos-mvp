@@ -2,6 +2,8 @@ import { NextResponse } from 'next/server'
 import { authTest } from '@/lib/slack'
 import { pingUser } from '@/lib/clickup'
 import { pingFireflies } from '@/lib/fireflies'
+import { getCachedSWR, recordSuccess } from '@/lib/api-cache'
+import { CACHE_TTL_SYSTEMS_MS } from '@/lib/constants'
 
 type Status = 'green' | 'amber' | 'red'
 
@@ -61,6 +63,16 @@ async function checkFireflies(): Promise<SystemResult> {
 }
 
 export async function GET() {
+  // Return stale cache if fresh enough — avoids pinging 3 external APIs on every page load
+  const cached = await getCachedSWR('systems-status', CACHE_TTL_SYSTEMS_MS)
+  if (cached.data && !cached.stale) {
+    return NextResponse.json({
+      ...cached.data,
+      _ageMinutes: cached.ageMinutes,
+    })
+  }
+
+  // Cache is stale or missing — fetch live
   const [slack, clickup, fireflies] = await Promise.all([
     checkSlack(),
     checkClickUp(),
@@ -75,5 +87,12 @@ export async function GET() {
     fireflies,
   ]
 
-  return NextResponse.json({ systems, timestamp: new Date().toISOString() })
+  const payload = { systems, timestamp: new Date().toISOString() }
+  await recordSuccess('systems-status', payload)
+
+  return NextResponse.json({
+    ...payload,
+    _stale: cached.stale || undefined,
+    _ageMinutes: cached.stale ? cached.ageMinutes : undefined,
+  })
 }

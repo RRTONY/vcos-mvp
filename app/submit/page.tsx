@@ -2,19 +2,7 @@
 
 import { useState, useRef } from 'react'
 import { useToast } from '@/components/Toast'
-
-const TEAM_NAMES = [
-  'Rob Holmes',
-  'Alex Veytsel',
-  'Josh Bykowski',
-  'Kim',
-  'Chase',
-  'Daniel Baez',
-  'Ben Sheppard',
-  'Tony',
-]
-
-const HOURS_MEMBERS = ['Rob Holmes', 'Alex Veytsel', 'Josh Bykowski', 'Ben Sheppard', 'Daniel Baez', 'Kim', 'Chase']
+import { TEAM_NAMES, HOURS_MEMBERS } from '@/lib/team'
 
 interface CheckState {
   invoiceSubmitted: boolean

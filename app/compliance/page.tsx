@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react'
 import { useRefresh } from '@/components/RefreshContext'
 import { ShareSlackButton } from '@/components/ShareButtons'
+import { useMe } from '@/hooks/useMe'
 
 interface Member {
   name: string
@@ -33,23 +34,13 @@ const BT_CHECKS = [
 ]
 
 export default function CompliancePage() {
+  const { isAdmin, isOwner } = useMe()
   const [team, setTeam] = useState<Member[]>(BASE_TEAM)
   const [checked, setChecked] = useState<boolean[]>(BT_CHECKS.map(() => false))
-  const [isAdmin, setIsAdmin] = useState(false)
-  const [isOwner, setIsOwner] = useState(false)
   const { refreshKey } = useRefresh()
 
   useEffect(() => {
-    fetch('/api/auth/me').then(r => r.ok ? r.json() : null)
-      .then(d => {
-        setIsAdmin(['admin', 'owner'].includes(d?.role ?? ''))
-        setIsOwner(d?.role === 'owner')
-      })
-      .catch(() => {})
-  }, [])
-
-  useEffect(() => {
-    fetch('/api/slack-stats')
+    fetch('/api/slack-stats', { cache: 'no-store' })
       .then((r) => r.json())
       .then((d) => {
         if (!d.weeklyReports) return

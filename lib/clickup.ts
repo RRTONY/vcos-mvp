@@ -1,3 +1,5 @@
+import { CLICKUP_WORKSPACE_ID, PRIORITY_URGENT, PRIORITY_HIGH } from '@/lib/constants'
+
 const BASE = 'https://api.clickup.com/api/v2'
 
 interface CUTask {
@@ -25,14 +27,14 @@ function taskDetail(t: CUTask) {
 }
 
 export async function buildClickUpSnapshot() {
-  const teamId = process.env.CLICKUP_WORKSPACE_ID ?? '10643959'
+  const teamId = process.env.CLICKUP_WORKSPACE_ID ?? CLICKUP_WORKSPACE_ID
   const data = await getTeamTasks(teamId)
   const tasks: CUTask[] = data.tasks ?? []
   const now = Date.now()
 
   const overdueTasks = tasks.filter(t => t.due_date && parseInt(t.due_date) < now && t.status?.type !== 'closed')
-  const urgentTasks  = tasks.filter(t => t.priority?.id === '1' && t.status?.type !== 'closed')
-  const highTasks    = tasks.filter(t => t.priority?.id === '2' && t.status?.type !== 'closed')
+  const urgentTasks  = tasks.filter(t => t.priority?.id === PRIORITY_URGENT && t.status?.type !== 'closed')
+  const highTasks    = tasks.filter(t => t.priority?.id === PRIORITY_HIGH && t.status?.type !== 'closed')
   const completedTasks = tasks.filter(t => t.status?.type === 'closed')
   const totalActive  = tasks.length
 
@@ -45,7 +47,7 @@ export async function buildClickUpSnapshot() {
       if (!assigneeStats[name]) assigneeStats[name] = { total: 0, overdue: 0, urgent: 0 }
       assigneeStats[name].total++
       if (t.due_date && parseInt(t.due_date) < now) assigneeStats[name].overdue++
-      if (t.priority?.id === '1') assigneeStats[name].urgent++
+      if (t.priority?.id === PRIORITY_URGENT) assigneeStats[name].urgent++
     }
   }
 

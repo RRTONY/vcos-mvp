@@ -1,40 +1,12 @@
 'use client'
 
-import { useEffect, useState, useRef, useCallback } from 'react' // eslint-disable-line @typescript-eslint/no-unused-vars
+import { useEffect, useState, useRef, useCallback } from 'react'
 import { useRefresh } from '@/components/RefreshContext'
 import { ShareSlackButton } from '@/components/ShareButtons'
-
-interface SlackData {
-  weeklyReports?: { filed: string[]; missing: string[]; week: string }
-  slackStats?: { totalMessages: number; activeMembers: number; channels: number }
-  error?: string
-}
-
-interface Task {
-  id: string; name: string; list: string; dueDate: string
-  priority: string; url: string; assignees: string[]
-}
-
-interface ClickUpData {
-  totalTasks?: number; overdue?: number; overduePercent?: number
-  urgent?: number; completed?: number
-  urgentDetails?: Task[]; highDetails?: Task[]; overdueDetails?: Task[]
-  assigneeStats?: Record<string, { total: number; overdue: number; urgent: number }>
-  tasksByAssignee?: Record<string, Task[]>
-  error?: string
-}
-
-// Team roster — cuKey is the ClickUp username prefix to match assigneeStats keys
-const TEAM = [
-  { name: 'Kim', full: 'Kim', role: 'Executive Ops', cuKey: 'kim' },
-  { name: 'Chase', full: 'Chase', role: 'Executive Ops', cuKey: 'chase' },
-  { name: 'Rob', full: 'Rob Holmes', role: 'BD · Grants', cuKey: 'rob' },
-  { name: 'Alex', full: 'Alex Veytsel', role: 'Equity Partner', cuKey: 'alex' },
-  { name: 'Josh', full: 'Josh Bykowski', role: 'Legal · BD', cuKey: 'josh' },
-  { name: 'Daniel', full: 'Daniel Baez', role: 'Webmaster', cuKey: 'daniel' },
-  { name: 'Ben', full: 'Ben Sheppard', role: 'ImpactSoul Contractor', cuKey: 'ben' },
-  { name: 'Tony', full: 'Tony', role: 'CEO', cuKey: 'tony' },
-]
+import { TEAM, REPORT_MEMBERS } from '@/lib/team'
+import type { TeamMember } from '@/lib/team'
+import type { Task, ClickUpData, SlackData } from '@/lib/types'
+import StaleBadge from '@/components/StaleBadge'
 
 const OKRS = [
   { id: 'OKR01', label: '$5M Revenue', pct: 1, note: '$31K YTD · need $95K/wk' },
@@ -88,7 +60,7 @@ function TaskRow({ t }: { t: Task }) {
 function MemberCard({
   member, stats, tasks, filed, loading,
 }: {
-  member: typeof TEAM[0]
+  member: TeamMember
   stats: { total: number; overdue: number; urgent: number } | null
   tasks: Task[]
   filed: boolean
@@ -112,7 +84,7 @@ function MemberCard({
         </div>
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 flex-wrap">
-            <span className="text-sm font-bold">{member.full}</span>
+            <span className="text-sm font-bold">{member.name}</span>
             <span className="text-[11px] text-ink4">{member.role}</span>
           </div>
           <div className="flex items-center gap-3 mt-1">
@@ -138,7 +110,7 @@ function MemberCard({
           </div>
         </div>
         <div className="flex items-center gap-2 flex-shrink-0">
-          {member.name !== 'Tony' && (
+          {member.filesReport && (
             <span className={`text-[10px] font-bold ${filed ? 'text-green-700' : 'text-red-600'}`}>
               {filed ? '● RPT' : '✕ RPT'}
             </span>
@@ -176,14 +148,14 @@ export default function DashboardPage() {
   const [slack, setSlack] = useState<SlackData | null>(null)
   const [clickup, setClickUp] = useState<ClickUpData | null>(null)
   const [loading, setLoading] = useState(true)
-  const { refreshKey } = useRefresh()
+  const { refreshKey, freshClickUp } = useRefresh()
   const prevKey = useRef(refreshKey)
 
-  const load = useCallback(async (cancelled: { v: boolean }) => {
+  const load = useCallback(async (cancelled: { v: boolean }, cachedClickUp?: Record<string, unknown> | null) => {
     setLoading(true)
     const [s, c] = await Promise.all([
-      fetch('/api/slack-stats').then((r) => r.json()).catch(() => null),
-      fetch('/api/clickup-tasks').then((r) => r.json()).catch(() => null),
+      fetch('/api/slack-stats', { cache: 'no-store' }).then((r) => r.json()).catch(() => null),
+      cachedClickUp ? Promise.resolve(cachedClickUp) : fetch('/api/clickup-tasks', { cache: 'no-store' }).then((r) => r.json()).catch(() => null),
     ])
     if (!cancelled.v) {
       setSlack(s)
@@ -202,9 +174,9 @@ export default function DashboardPage() {
     if (refreshKey === prevKey.current) return
     prevKey.current = refreshKey
     const cancelled = { v: false }
-    load(cancelled)
+    load(cancelled, freshClickUp)
     return () => { cancelled.v = true }
-  }, [refreshKey, load])
+  }, [refreshKey, freshClickUp, load])
 
   const wr = slack?.weeklyReports
   const filed = wr?.filed ?? []
@@ -272,7 +244,7 @@ export default function DashboardPage() {
 
   const shareMsg = [
     `📊 *CEO Status Brief — Week of ${week}*`,
-    `Reports: ${filed.length}/${TEAM.length} filed${missing.length ? ` · Missing: ${missing.map(n => n.split(' ')[0]).join(', ')}` : ' ✅'}`,
+    `Reports: ${filed.length}/${REPORT_MEMBERS.length} filed${missing.length ? ` · Missing: ${missing.map(n => n.split(' ')[0]).join(', ')}` : ' ✅'}`,
     clickup ? `CRM: ${clickup.overduePercent}% overdue (${clickup.overdue}/${clickup.totalTasks}) · ${clickup.urgent} urgent` : '',
     `_From Visual Chief of Staff_`,
   ].filter(Boolean).join('\n')
@@ -283,7 +255,13 @@ export default function DashboardPage() {
       <div className="flex items-center justify-between mt-6 mb-4">
         <div>
           <h1 className="font-display text-2xl tracking-widest">CEO COMMAND</h1>
-          <div className="text-xs text-ink4 mt-0.5">Week of {week}</div>
+          <div className="flex items-center gap-2 mt-0.5">
+            <span className="text-xs text-ink4">Week of {week}</span>
+            <StaleBadge
+              ageMinutes={(clickup as {_ageMinutes?: number})?._ageMinutes}
+              circuitOpen={(clickup as {_circuitOpen?: boolean})?._circuitOpen}
+            />
+          </div>
         </div>
         {!loading && (
           <ShareSlackButton label="Post Brief" message={shareMsg} />
@@ -294,7 +272,7 @@ export default function DashboardPage() {
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
         {[
           {
-            value: loading ? '…' : `${filed.length}/${TEAM.length}`,
+            value: loading ? '…' : `${filed.length}/${REPORT_MEMBERS.length}`,
             label: 'Reports Filed',
             sub: loading ? '' : missing.length ? `${missing.length} missing` : 'All filed ✓',
             alert: !loading && missing.length > 0,
@@ -342,7 +320,7 @@ export default function DashboardPage() {
       <div className="space-y-2 mb-6">
         {TEAM.map((member) => (
           <MemberCard
-            key={member.full}
+            key={member.name}
             member={member}
             stats={findStats(clickup?.assigneeStats, member.cuKey)}
             tasks={findTasks(clickup?.tasksByAssignee, member.cuKey)}

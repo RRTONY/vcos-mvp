@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react'
 import SystemRow from '@/components/SystemRow'
 import ProgressBar from '@/components/ProgressBar'
 import { useRefresh } from '@/components/RefreshContext'
+import type { HealthRow } from '@/app/api/cache-health/route'
 
 type Status = 'green' | 'amber' | 'red'
 
@@ -158,17 +159,33 @@ interface SlackKPIs {
   channels: number
 }
 
+const HEALTH_LABEL: Record<HealthRow['health'], string> = {
+  ok:           'green',
+  stale:        'amber',
+  dead:         'red',
+  circuit_open: 'red',
+}
+
+const HEALTH_DETAIL: Record<HealthRow['health'], string> = {
+  ok:           'Fresh',
+  stale:        'Stale',
+  dead:         'Expired',
+  circuit_open: 'Circuit open',
+}
+
 export default function SystemsPage() {
   const [systems, setSystems] = useState<SystemStatus[]>(STATIC_SYSTEMS)
   const [lastChecked, setLastChecked] = useState('')
   const [slackKPIs, setSlackKPIs] = useState<SlackKPIs | null>(null)
+  const [cacheHealth, setCacheHealth] = useState<HealthRow[]>([])
   const { refreshKey } = useRefresh()
 
   useEffect(() => {
     Promise.all([
-      fetch('/api/systems-status').then((r) => r.json()).catch(() => null),
-      fetch('/api/slack-stats').then((r) => r.json()).catch(() => null),
-    ]).then(([sysData, slackData]) => {
+      fetch('/api/systems-status', { cache: 'no-store' }).then((r) => r.json()).catch(() => null),
+      fetch('/api/slack-stats', { cache: 'no-store' }).then((r) => r.json()).catch(() => null),
+      fetch('/api/cache-health', { cache: 'no-store' }).then((r) => r.json()).catch(() => null),
+    ]).then(([sysData, slackData, healthData]) => {
       if (sysData?.systems) {
         setSystems((prev) =>
           prev.map((s) => {
@@ -180,6 +197,7 @@ export default function SystemsPage() {
         )
       }
       if (slackData?.slackStats) setSlackKPIs(slackData.slackStats)
+      if (healthData?.health) setCacheHealth(healthData.health)
       setLastChecked(new Date().toLocaleTimeString())
     })
   }, [refreshKey])
@@ -218,6 +236,41 @@ export default function SystemsPage() {
               pct={m.pct}
             />
           ))}
+        </div>
+      </div>
+
+      <div className="slbl">API Cache Health</div>
+      <div className="card mb-6">
+        <div className="card-body p-0 px-4 divide-y divide-sand3">
+          {cacheHealth.length === 0 ? (
+            <div className="py-3 text-sm text-ink4 animate-pulse">Loading cache health…</div>
+          ) : cacheHealth.map((row) => {
+            const statusColor = HEALTH_LABEL[row.health]
+            return (
+              <div key={row.source} className="flex items-center gap-3 py-3">
+                <div className={`w-2 h-2 rounded-full flex-shrink-0 ${
+                  statusColor === 'green' ? 'bg-green-500' :
+                  statusColor === 'amber' ? 'bg-amber-400' : 'bg-red-500'
+                }`} />
+                <span className="text-sm font-bold w-28 capitalize">{row.source}</span>
+                <span className={`text-xs font-bold ${
+                  statusColor === 'green' ? 'text-green-700' :
+                  statusColor === 'amber' ? 'text-amber-600' : 'text-red-600'
+                }`}>
+                  {HEALTH_DETAIL[row.health]}
+                </span>
+                <span className="text-xs text-ink4 ml-1">
+                  {row.age_minutes}m old
+                  {row.consecutive_failures > 0 && ` · ${row.consecutive_failures} failure${row.consecutive_failures > 1 ? 's' : ''}`}
+                </span>
+                {row.last_error && (
+                  <span className="text-xs text-red-500 truncate ml-auto max-w-xs" title={row.last_error}>
+                    {row.last_error}
+                  </span>
+                )}
+              </div>
+            )
+          })}
         </div>
       </div>
 

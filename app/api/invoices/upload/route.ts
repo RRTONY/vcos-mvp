@@ -3,6 +3,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { parseBraintrustPdf } from '@/lib/pdf-parser'
 import { COOKIE_NAME, verifySession } from '@/lib/auth'
+import { buildInvoicesSnapshot } from '@/app/api/invoices/route'
+import { recordSuccess } from '@/lib/api-cache'
 
 const LIST_ID = process.env.CLICKUP_INVOICE_LIST_ID ?? '901102575315'
 
@@ -59,6 +61,10 @@ export async function POST(req: NextRequest) {
         return { contractor: inv.contractor, taskId: d.id, url: d.url }
       })
     )
+
+    // Bust the invoices cache so next GET returns fresh data
+    const snapshot = await buildInvoicesSnapshot().catch(() => null)
+    if (snapshot) await recordSuccess('invoices', snapshot)
 
     return NextResponse.json({ ok: true, count: created.length, created })
   } catch (err) {

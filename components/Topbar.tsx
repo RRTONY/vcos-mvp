@@ -1,17 +1,18 @@
 'use client'
 
-import { useEffect, useState, useCallback } from 'react' // eslint-disable-line @typescript-eslint/no-unused-vars
+import { useEffect, useState, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import LivePill from './LivePill'
 import { useRefresh } from './RefreshContext'
+import { useMe } from '@/hooks/useMe'
 
 const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
 const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
 
 export default function Topbar() {
+  const { me } = useMe()
   const [clock, setClock] = useState('--:--:--')
   const [dateStr, setDateStr] = useState('')
-  const [user, setUser] = useState<{ username: string; role: string } | null>(null)
   const { lastUpdated, triggerRefresh } = useRefresh()
   const [refreshing, setRefreshing] = useState(false)
   const router = useRouter()
@@ -26,14 +27,6 @@ export default function Topbar() {
     tick()
     const id = setInterval(tick, 1000)
     return () => clearInterval(id)
-  }, [])
-
-  // Fetch current user
-  useEffect(() => {
-    fetch('/api/auth/me')
-      .then(r => r.ok ? r.json() : null)
-      .then(d => setUser(d))
-      .catch(() => {})
   }, [])
 
   const handleLogout = useCallback(async () => {
@@ -61,23 +54,28 @@ export default function Topbar() {
         <button
           onClick={async () => {
             setRefreshing(true)
-            await fetch('/api/clickup-tasks', { method: 'POST' }).catch(() => {})
+            await Promise.allSettled([
+              fetch('/api/clickup-tasks',    { method: 'POST' }),
+              fetch('/api/slack-stats',      { method: 'POST' }),
+              fetch('/api/webwork',          { method: 'POST' }),
+              fetch('/api/fireflies-meetings', { method: 'POST' }),
+            ])
             triggerRefresh()
             setRefreshing(false)
           }}
           disabled={refreshing}
           className="border border-white/20 px-2 py-0.5 font-mono text-xs hover:bg-white/10 transition-colors disabled:opacity-40"
-          title="Refresh data from ClickUp"
+          title="Refresh all data sources"
         >
           {refreshing ? '…' : '↻'}
         </button>
         <LivePill />
-        {user && (
+        {me && (
           <div className="flex items-center gap-1.5 ml-1">
             <span className="text-white/50 text-xs hidden sm:block">
-              {user.username}
-              {user.role === 'owner' && <span className="ml-1 text-white/30">·owner</span>}
-              {user.role === 'admin' && <span className="ml-1 text-white/30">·admin</span>}
+              {me.username}
+              {me.role === 'owner' && <span className="ml-1 text-white/30">·owner</span>}
+              {me.role === 'admin' && <span className="ml-1 text-white/30">·admin</span>}
             </span>
             <button
               onClick={handleLogout}

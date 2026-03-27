@@ -1,8 +1,10 @@
 // GET /api/invoices
-// Fetches ClickUp tasks tagged 'braintrust-invoice' and returns invoice records
-// Rate + amount fields are included — callers must apply RBAC based on /api/auth/me role
+// Reads from Supabase cache. Cache is populated on first request or when stale (> 5 min).
+// Admin upload (POST /api/invoices/upload) also refreshes the cache.
 
 import { NextResponse } from 'next/server'
+import { getCachedSWR, recordSuccess, recordFailure } from '@/lib/api-cache'
+import { CACHE_TTL_INVOICES_MS } from '@/lib/constants'
 
 const LIST_ID = process.env.CLICKUP_INVOICE_LIST_ID ?? '901102575315'
 
@@ -23,7 +25,6 @@ function extractField(task: CUTask, ...names: string[]): string {
     )
     if (f?.value != null) return String(f.value)
   }
-  // Fall back to parsing description
   if (task.description) {
     for (const name of names) {
       const m = task.description.match(new RegExp(`${name}[:\\s]+([^\\n]+)`, 'i'))
@@ -33,36 +34,61 @@ function extractField(task: CUTask, ...names: string[]): string {
   return ''
 }
 
-export async function GET() {
+export async function buildInvoicesSnapshot() {
   const apiKey = process.env.CLICKUP_API_KEY
-  if (!apiKey) return NextResponse.json({ invoices: [], error: 'CLICKUP_API_KEY not configured' })
+  if (!apiKey) throw new Error('CLICKUP_API_KEY not configured')
 
+  const res = await fetch(
+    `https://api.clickup.com/api/v2/list/${LIST_ID}/task?tags[]=braintrust-invoice&include_closed=true`,
+    { headers: { Authorization: apiKey }, next: { revalidate: 0 } }
+  )
+  if (!res.ok) throw new Error(`ClickUp ${res.status}`)
+  const data = await res.json()
+  const tasks: CUTask[] = data.tasks ?? []
+
+  const invoices = tasks
+    .filter((t: CUTask) => t.tags?.some(tag => tag.name === 'braintrust-invoice'))
+    .map((t: CUTask) => ({
+      id: t.id,
+      contractor: extractField(t, 'contractor', 'name'),
+      invoiceNumber: extractField(t, 'invoice', 'inv'),
+      period: extractField(t, 'period', 'dates'),
+      hours: parseFloat(extractField(t, 'hours') || '0') || 0,
+      rate: parseFloat(extractField(t, 'rate') || '0') || 0,
+      amount: parseFloat(extractField(t, 'amount', 'total') || '0') || 0,
+      status: extractField(t, 'status') || t.status?.status || 'unknown',
+      parsedAt: t.date_created ? new Date(parseInt(t.date_created)).toISOString() : '',
+      clickupUrl: `https://app.clickup.com/t/${t.id}`,
+    }))
+
+  return { invoices }
+}
+
+export async function GET() {
+  const cached = await getCachedSWR('invoices', CACHE_TTL_INVOICES_MS)
+
+  // Fresh cache — return immediately
+  if (cached.data && !cached.stale) {
+    return NextResponse.json({ ...cached.data })
+  }
+
+  // Stale or missing — try live fetch
   try {
-    const res = await fetch(
-      `https://api.clickup.com/api/v2/list/${LIST_ID}/task?tags[]=braintrust-invoice&include_closed=true`,
-      { headers: { Authorization: apiKey }, next: { revalidate: 0 } }
-    )
-    if (!res.ok) throw new Error(`ClickUp ${res.status}`)
-    const data = await res.json()
-    const tasks: CUTask[] = data.tasks ?? []
-
-    const invoices = tasks
-      .filter((t: CUTask) => t.tags?.some(tag => tag.name === 'braintrust-invoice'))
-      .map((t: CUTask) => ({
-        id: t.id,
-        contractor: extractField(t, 'contractor', 'name'),
-        invoiceNumber: extractField(t, 'invoice', 'inv'),
-        period: extractField(t, 'period', 'dates'),
-        hours: parseFloat(extractField(t, 'hours') || '0') || 0,
-        rate: parseFloat(extractField(t, 'rate') || '0') || 0,
-        amount: parseFloat(extractField(t, 'amount', 'total') || '0') || 0,
-        status: extractField(t, 'status') || t.status?.status || 'unknown',
-        parsedAt: t.date_created ? new Date(parseInt(t.date_created)).toISOString() : '',
-        clickupUrl: `https://app.clickup.com/t/${t.id}`,
-      }))
-
-    return NextResponse.json({ invoices })
+    const snapshot = await buildInvoicesSnapshot()
+    await recordSuccess('invoices', snapshot)
+    return NextResponse.json(snapshot)
   } catch (err) {
-    return NextResponse.json({ invoices: [], error: err instanceof Error ? err.message : 'Error' })
+    const msg = err instanceof Error ? err.message : 'Error'
+    await recordFailure('invoices', msg)
+    // Return stale data if available, otherwise empty
+    if (cached.data) {
+      return NextResponse.json({
+        ...cached.data,
+        error: `Live fetch failed: ${msg}`,
+        _stale: true,
+        _ageMinutes: cached.ageMinutes,
+      })
+    }
+    return NextResponse.json({ invoices: [], error: msg })
   }
 }

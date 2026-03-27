@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useRef } from 'react'
 import { useRefresh } from '@/components/RefreshContext'
+import { useMe } from '@/hooks/useMe'
 
 interface Invoice {
   id: string
@@ -16,8 +17,6 @@ interface Invoice {
   clickupUrl?: string
 }
 
-interface Me { username: string; role: 'owner' | 'admin' | 'user' }
-
 const STATUS_STYLE: Record<string, string> = {
   paid:    'bg-black text-white',
   pending: 'bg-sand2 text-ink3 border border-sand3',
@@ -25,8 +24,8 @@ const STATUS_STYLE: Record<string, string> = {
 }
 
 export default function InvoicesPage() {
+  const { me, isAdmin, isOwner } = useMe()
   const [invoices, setInvoices] = useState<Invoice[]>([])
-  const [me, setMe] = useState<Me | null>(null)
   const [loading, setLoading] = useState(true)
   const [uploading, setUploading] = useState(false)
   const [uploadMsg, setUploadMsg] = useState('')
@@ -34,12 +33,8 @@ export default function InvoicesPage() {
   const { refreshKey } = useRefresh()
 
   useEffect(() => {
-    fetch('/api/auth/me').then(r => r.ok ? r.json() : null).then(setMe).catch(() => {})
-  }, [])
-
-  useEffect(() => {
     setLoading(true)
-    fetch('/api/invoices')
+    fetch('/api/invoices', { cache: 'no-store' })
       .then(r => r.json())
       .then(d => { setInvoices(d.invoices ?? []); setLoading(false) })
       .catch(() => setLoading(false))
@@ -58,7 +53,7 @@ export default function InvoicesPage() {
       if (res.ok) {
         setUploadMsg(`✓ Imported ${d.count} invoice${d.count !== 1 ? 's' : ''}`)
         // Reload
-        const fresh = await fetch('/api/invoices').then(r => r.json())
+        const fresh = await fetch('/api/invoices', { cache: 'no-store' }).then(r => r.json())
         setInvoices(fresh.invoices ?? [])
       } else {
         setUploadMsg(`Error: ${d.error}`)
@@ -71,10 +66,8 @@ export default function InvoicesPage() {
     }
   }
 
-  const isAdmin = me?.role === 'admin' || me?.role === 'owner'
-  const isOwner = me?.role === 'owner'
   const visible = isAdmin ? invoices : invoices.filter(inv =>
-    inv.contractor.toLowerCase().includes(me?.username?.toLowerCase() ?? '____')
+    me ? inv.contractor.toLowerCase().includes(me.username.toLowerCase()) : false
   )
 
   return (

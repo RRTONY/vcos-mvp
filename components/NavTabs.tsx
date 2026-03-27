@@ -2,7 +2,7 @@
 
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { useEffect, useState } from 'react'
+import { useMe } from '@/hooks/useMe'
 
 const TABS = [
   { label: 'Dashboard', href: '/' },
@@ -23,13 +23,7 @@ const ADMIN_TABS = [
 
 export default function NavTabs() {
   const path = usePathname()
-  const [isAdmin, setIsAdmin] = useState(false)
-
-  useEffect(() => {
-    fetch('/api/auth/me').then(r => r.ok ? r.json() : null)
-      .then(d => setIsAdmin(['admin', 'owner'].includes(d?.role ?? '')))
-      .catch(() => {})
-  }, [])
+  const { isAdmin } = useMe()
 
   const allTabs = isAdmin ? [...TABS, ...ADMIN_TABS] : TABS
 

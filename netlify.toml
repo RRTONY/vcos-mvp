@@ -15,6 +15,7 @@
 [build]
   command   = "npm run build"
   publish   = ".next"
+  functions = "netlify/functions"
 
 [build.environment]
   NODE_VERSION = "18"
@@ -38,6 +39,7 @@
   #                              users:read, chat:write
   #   FIREFLIES_API_KEY        = d109cc2...
   #   ALLOWED_ORIGIN           = https://vsoc.netlify.app/
+  #   NEXT_PUBLIC_URL          = https://vcos-ramprate.netlify.app  (no trailing slash, used by cron-refresh function)
 
 # ── NEXT.JS PLUGIN ─────────────────────────────────────────────
 [[plugins]]

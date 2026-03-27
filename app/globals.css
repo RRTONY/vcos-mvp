@@ -50,6 +50,9 @@
   .field-input {
     @apply w-full border border-sand3 px-3 py-2 text-sm font-sans bg-sand focus:outline-none focus:border-ink transition-colors;
   }
+  .field-label {
+    @apply block text-xs font-bold uppercase tracking-widest text-ink3 mb-1;
+  }
   .btn-primary {
     @apply bg-ink text-sand font-bold text-sm px-6 py-3 hover:bg-ink2 transition-colors cursor-pointer border-0;
   }

@@ -51,19 +51,8 @@ export async function conversationsList() {
   })
 }
 
-const WEEKLY_REPORTS_CHANNEL = 'C08K6KM53FV'
-const FULL_TEAM = ['Rob Holmes', 'Alex Veytsel', 'Josh Bykowski', 'Kim', 'Chase', 'Daniel Baez', 'Ben Sheppard', 'Tony']
-
-const SLACK_MATCH: Record<string, string[]> = {
-  'Rob Holmes':    ['rob holmes', 'rob'],
-  'Alex Veytsel':  ['alex veytsel', 'alex'],
-  'Josh Bykowski': ['josh bykowski', 'josh'],
-  'Kim':           ['kimberly dofredo', 'kimberly', 'kim'],
-  'Chase':         ['chase adrian', 'chase'],
-  'Daniel Baez':   ['daniel baez', 'daniel'],
-  'Ben Sheppard':  ['ben sheppard', 'ben'],
-  'Tony':          ['tony greenberg', 'rampratetony', 'tonyg', 'tony'],
-}
+import { TEAM_NAMES, SLACK_MATCH } from '@/lib/team'
+import { SLACK_CHANNEL_WEEKLY_REPORTS } from '@/lib/constants'
 
 function weekLabel() {
   const now = new Date()
@@ -75,13 +64,13 @@ function weekLabel() {
   return `${months[mon.getMonth()]} ${mon.getDate()}–${sun.getDate()}`
 }
 
-export { FULL_TEAM, weekLabel }
+export { weekLabel }
 
 export async function buildSlackSnapshot() {
   const oldest = String(Math.floor((Date.now() - 7 * 24 * 60 * 60 * 1000) / 1000))
 
   const [historyData, membersData, channelsData] = await Promise.all([
-    channelHistory(WEEKLY_REPORTS_CHANNEL, oldest),
+    channelHistory(SLACK_CHANNEL_WEEKLY_REPORTS, oldest),
     usersList(),
     conversationsList(),
   ])
@@ -104,7 +93,7 @@ export async function buildSlackSnapshot() {
 
   const filed: string[] = []
   const missing: string[] = []
-  for (const member of FULL_TEAM) {
+  for (const member of TEAM_NAMES) {
     const aliases = SLACK_MATCH[member] ?? [member.split(' ')[0].toLowerCase()]
     const didFile =
       posters.some(p => aliases.some(a => p.toLowerCase().includes(a))) ||
