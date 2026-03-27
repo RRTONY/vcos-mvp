@@ -3,7 +3,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { parseBraintrustPdf } from '@/lib/pdf-parser'
 import { COOKIE_NAME, verifySession } from '@/lib/auth'
-import { buildInvoicesSnapshot } from '@/app/api/invoices/route'
+import { buildInvoicesSnapshot } from '@/lib/invoices'
 import { recordSuccess } from '@/lib/api-cache'
 
 const LIST_ID = process.env.CLICKUP_INVOICE_LIST_ID ?? '901102575315'
