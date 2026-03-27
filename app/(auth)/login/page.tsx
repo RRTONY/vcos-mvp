@@ -37,57 +37,60 @@ function LoginForm() {
   }
 
   return (
-    <div className="w-full max-w-sm mx-auto px-4">
+    <div className="w-full max-w-sm">
+      {/* Brand */}
       <div className="text-center mb-8">
-        <div className="font-display text-3xl tracking-widest mb-1">RAMPRATE</div>
-        <div className="text-sm text-ink3 uppercase tracking-widest">Visual Chief of Staff</div>
+        <div className="font-display text-4xl tracking-widest mb-1">RAMPRATE</div>
+        <div className="text-xs text-ink3 uppercase tracking-widest">Visual Chief of Staff</div>
       </div>
 
-      <form onSubmit={handleSubmit} className="card">
-        <div className="p-6 space-y-4">
-          <div>
-            <label className="block text-xs font-bold uppercase tracking-widest text-ink3 mb-1.5">
-              Username
-            </label>
-            <input
-              type="text"
-              value={username}
-              onChange={(e) => setUsername(e.target.value)}
-              className="field-input w-full"
-              placeholder="your username"
-              autoCapitalize="none"
-              autoComplete="username"
-              required
-            />
-          </div>
-          <div>
-            <label className="block text-xs font-bold uppercase tracking-widest text-ink3 mb-1.5">
-              Password
-            </label>
-            <input
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              className="field-input w-full"
-              placeholder="••••••••"
-              autoComplete="current-password"
-              required
-            />
-          </div>
-          {error && (
-            <div className="alert alert-red text-sm">{error}</div>
-          )}
-          <button
-            type="submit"
-            disabled={loading}
-            className="btn-primary w-full"
-          >
-            {loading ? 'Signing in…' : 'Sign In'}
-          </button>
+      {/* Form */}
+      <form onSubmit={handleSubmit} className="space-y-4">
+        <div>
+          <label htmlFor="username" className="field-label">Username</label>
+          <input
+            id="username"
+            type="text"
+            value={username}
+            onChange={(e) => setUsername(e.target.value)}
+            className="w-full border border-sand3 bg-white px-4 py-3 text-base focus:outline-none focus:border-ink transition-colors"
+            placeholder="your username"
+            autoCapitalize="none"
+            autoCorrect="off"
+            autoComplete="username"
+            required
+          />
         </div>
+
+        <div>
+          <label htmlFor="password" className="field-label">Password</label>
+          <input
+            id="password"
+            type="password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            className="w-full border border-sand3 bg-white px-4 py-3 text-base focus:outline-none focus:border-ink transition-colors"
+            autoComplete="current-password"
+            required
+          />
+        </div>
+
+        {error && (
+          <div className="text-sm text-red-700 bg-red-50 border border-red-200 px-3 py-2">
+            {error}
+          </div>
+        )}
+
+        <button
+          type="submit"
+          disabled={loading}
+          className="w-full bg-ink text-sand font-bold text-base py-4 hover:bg-ink2 transition-colors disabled:opacity-50"
+        >
+          {loading ? 'Signing in…' : 'Sign In'}
+        </button>
       </form>
 
-      <p className="text-center text-xs text-ink4 mt-4">
+      <p className="text-center text-xs text-ink4 mt-6">
         Access restricted · RampRate / ImpactSoul
       </p>
     </div>

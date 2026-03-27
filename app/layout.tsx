@@ -1,7 +1,6 @@
 import type { Metadata } from 'next'
 import './globals.css'
-import Topbar from '@/components/Topbar'
-import NavTabs from '@/components/NavTabs'
+import AppShell from '@/components/AppShell'
 import { ToastProvider } from '@/components/Toast'
 import { RefreshProvider } from '@/components/RefreshContext'
 
@@ -17,9 +16,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       <body>
         <RefreshProvider>
           <ToastProvider>
-            <Topbar />
-            <NavTabs />
-            <main className="max-w-4xl mx-auto px-4 pb-16">{children}</main>
+            <AppShell>{children}</AppShell>
           </ToastProvider>
         </RefreshProvider>
       </body>
