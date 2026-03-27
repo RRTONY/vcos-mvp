@@ -48,6 +48,26 @@ export async function getWeekHours(userId: number, weekDates: string[]): Promise
   }
 }
 
+export async function buildWebWorkSnapshot() {
+  const weekDates = getCurrentWeekDates()
+  const results = await Promise.all(
+    Object.entries(MEMBER_IDS).map(async ([username, userId]) => {
+      try {
+        const { totalMinutes, byDay } = await getWeekHours(userId, weekDates)
+        return {
+          username,
+          totalMinutes,
+          totalHours: Math.round(totalMinutes / 60 * 10) / 10,
+          byDay: byDay.map(d => ({ date: d.date, minutes: d.minutes, hours: Math.round(d.minutes / 60 * 10) / 10 })),
+        }
+      } catch {
+        return { username, totalMinutes: 0, totalHours: 0, byDay: [] }
+      }
+    })
+  )
+  return { week: weekDates, members: results }
+}
+
 // Returns Mon–Sun dates for the current week
 export function getCurrentWeekDates(): string[] {
   const today = new Date()

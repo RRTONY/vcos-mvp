@@ -1,10 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabase } from '@/lib/supabase'
 import { setCache } from '@/lib/api-cache'
-import { buildClickUpSnapshot } from '@/app/api/clickup-tasks/route'
-import { buildSlackSnapshot } from '@/app/api/slack-stats/route'
-import { buildWebWorkSnapshot } from '@/app/api/webwork/route'
-import { buildFirefliesSnapshot } from '@/app/api/fireflies-meetings/route'
+import { buildClickUpSnapshot } from '@/lib/clickup'
+import { buildSlackSnapshot } from '@/lib/slack'
+import { buildWebWorkSnapshot } from '@/lib/webwork'
+import { buildFirefliesSnapshot } from '@/lib/fireflies'
 
 async function generateDailyReport() {
   const today = new Date().toISOString().slice(0, 10)

@@ -1,26 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { MEMBER_IDS, getWeekHours, getCurrentWeekDates } from '@/lib/webwork'
+import { buildWebWorkSnapshot } from '@/lib/webwork'
 import { getCached, setCache } from '@/lib/api-cache'
-
-export async function buildWebWorkSnapshot() {
-  const weekDates = getCurrentWeekDates()
-  const results = await Promise.all(
-    Object.entries(MEMBER_IDS).map(async ([username, userId]) => {
-      try {
-        const { totalMinutes, byDay } = await getWeekHours(userId, weekDates)
-        return {
-          username,
-          totalMinutes,
-          totalHours: Math.round(totalMinutes / 60 * 10) / 10,
-          byDay: byDay.map(d => ({ date: d.date, minutes: d.minutes, hours: Math.round(d.minutes / 60 * 10) / 10 })),
-        }
-      } catch {
-        return { username, totalMinutes: 0, totalHours: 0, byDay: [] }
-      }
-    })
-  )
-  return { week: weekDates, members: results }
-}
 
 // GET — read from Supabase cache
 export async function GET(req: NextRequest) {
