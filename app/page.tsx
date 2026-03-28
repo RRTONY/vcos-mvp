@@ -5,8 +5,12 @@ import { useRefresh } from '@/components/RefreshContext'
 import { ShareSlackButton } from '@/components/ShareButtons'
 import { TEAM, REPORT_MEMBERS } from '@/lib/team'
 import type { TeamMember } from '@/lib/team'
-import type { Task, ClickUpData, SlackData } from '@/lib/types'
+import type { Task, ClickUpData, SlackData, WebWorkMember } from '@/lib/types'
 import StaleBadge from '@/components/StaleBadge'
+import dynamic from 'next/dynamic'
+const CrmDonut = dynamic(() => import('@/components/charts/CrmDonut'), { ssr: false })
+const OkrRings = dynamic(() => import('@/components/charts/OkrRing'), { ssr: false })
+const MemberSparkline = dynamic(() => import('@/components/charts/MemberSparkline'), { ssr: false })
 
 const OKRS = [
   { id: 'OKR01', label: '$5M Revenue', pct: 1, note: '$31K YTD · need $95K/wk' },
@@ -58,13 +62,14 @@ function TaskRow({ t }: { t: Task }) {
 }
 
 function MemberCard({
-  member, stats, tasks, filed, loading,
+  member, stats, tasks, filed, loading, sparkline,
 }: {
   member: TeamMember
   stats: { total: number; overdue: number; urgent: number } | null
   tasks: Task[]
   filed: boolean
   loading: boolean
+  sparkline?: { date: string; hours: number }[]
 }) {
   const [open, setOpen] = useState(false)
   const flow = stats && stats.total > 0
@@ -105,6 +110,9 @@ function MemberCard({
           )}
         </div>
         <div className="flex items-center gap-2 flex-shrink-0">
+          {sparkline && sparkline.length > 0 && (
+            <MemberSparkline byDay={sparkline} color={flow !== null && flow < 50 ? '#DC2626' : '#4F46E5'} />
+          )}
           {member.filesReport && (
             <span className={filed ? 'badge-green' : 'badge-red'}>
               {filed ? 'Filed' : 'Missing'}
@@ -143,19 +151,22 @@ function MemberCard({
 export default function DashboardPage() {
   const [slack, setSlack] = useState<SlackData | null>(null)
   const [clickup, setClickUp] = useState<ClickUpData | null>(null)
+  const [webwork, setWebwork] = useState<{ members: WebWorkMember[] } | null>(null)
   const [loading, setLoading] = useState(true)
   const { refreshKey, freshClickUp } = useRefresh()
   const prevKey = useRef(refreshKey)
 
   const load = useCallback(async (cancelled: { v: boolean }, cachedClickUp?: Record<string, unknown> | null) => {
     setLoading(true)
-    const [s, c] = await Promise.all([
+    const [s, c, w] = await Promise.all([
       fetch('/api/slack-stats', { cache: 'no-store' }).then((r) => r.json()).catch(() => null),
       cachedClickUp ? Promise.resolve(cachedClickUp) : fetch('/api/clickup-tasks', { cache: 'no-store' }).then((r) => r.json()).catch(() => null),
+      fetch('/api/webwork', { cache: 'no-store' }).then((r) => r.json()).catch(() => null),
     ])
     if (!cancelled.v) {
       setSlack(s)
       setClickUp(c)
+      setWebwork(w)
       setLoading(false)
     }
   }, [])
@@ -265,52 +276,60 @@ export default function DashboardPage() {
       </div>
 
       {/* Key metrics */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-6">
-        {[
-          {
-            value: loading ? '—' : `${filed.length}/${REPORT_MEMBERS.length}`,
-            label: 'Reports Filed',
-            sub: loading ? '' : missing.length ? `${missing.length} missing` : 'All filed ✓',
-            color: !loading && missing.length > 0 ? 'text-danger' : 'text-success',
-            bar: !loading ? Math.round((filed.length / REPORT_MEMBERS.length) * 100) : null,
-            barColor: !loading && missing.length > 0 ? 'bg-danger' : 'bg-success',
-          },
-          {
-            value: loading ? '—' : (clickup?.urgent ?? '—'),
-            label: 'Urgent Tasks',
-            sub: 'Need immediate action',
-            color: !loading && (clickup?.urgent ?? 0) > 0 ? 'text-danger' : 'text-ink',
-            bar: null,
-            barColor: '',
-          },
-          {
-            value: loading ? '—' : `${clickup?.overduePercent ?? '—'}%`,
-            label: 'CRM Overdue',
-            sub: loading ? '' : clickup ? `${clickup.overdue} of ${clickup.totalTasks} tasks` : '',
-            color: !loading && (clickup?.overduePercent ?? 0) > 50 ? 'text-danger' : 'text-warning',
-            bar: !loading && clickup ? clickup.overduePercent : null,
-            barColor: !loading && (clickup?.overduePercent ?? 0) > 50 ? 'bg-danger' : 'bg-warning',
-          },
-          {
-            value: loading ? '—' : (clickup?.totalTasks ?? '—'),
-            label: 'Active Tasks',
-            sub: loading ? '' : `${clickup?.completed ?? 0} completed`,
-            color: 'text-ink',
-            bar: null,
-            barColor: '',
-          },
-        ].map((s) => (
-          <div key={s.label} className={`stat-tile ${loading ? 'animate-pulse' : ''}`}>
-            <div className={`stat-value ${s.color}`}>{s.value}</div>
-            <div className="stat-label">{s.label}</div>
-            {s.sub && <div className="stat-sub">{s.sub}</div>}
-            {s.bar !== null && (
-              <div className="progress-track mt-2">
-                <div className={`progress-fill ${s.barColor}`} style={{ width: `${Math.min(s.bar ?? 0, 100)}%` }} />
-              </div>
-            )}
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
+        {/* Reports filed */}
+        <div className={`stat-tile ${loading ? 'animate-pulse' : ''}`}>
+          <div className={`stat-value ${!loading && missing.length > 0 ? 'text-danger' : 'text-success'}`}>
+            {loading ? '—' : `${filed.length}/${REPORT_MEMBERS.length}`}
           </div>
-        ))}
+          <div className="stat-label">Reports Filed</div>
+          {!loading && (
+            <div className="stat-sub">{missing.length ? `Missing: ${missing.join(', ')}` : 'All filed ✓'}</div>
+          )}
+          {!loading && (
+            <div className="progress-track mt-2">
+              <div
+                className={`progress-fill ${missing.length > 0 ? 'bg-danger' : 'bg-success'}`}
+                style={{ width: `${Math.round((filed.length / REPORT_MEMBERS.length) * 100)}%` }}
+              />
+            </div>
+          )}
+        </div>
+
+        {/* CRM donut */}
+        <div className={`stat-tile ${loading ? 'animate-pulse' : ''}`}>
+          <div className="stat-label mb-3">CRM Task Breakdown</div>
+          {loading ? (
+            <div className="h-24 flex items-center justify-center text-ink4 text-sm">Loading…</div>
+          ) : clickup && clickup.totalTasks ? (
+            <CrmDonut
+              total={clickup.totalTasks}
+              overdue={clickup.overdue ?? 0}
+              urgent={clickup.urgent ?? 0}
+              completed={clickup.completed ?? 0}
+            />
+          ) : (
+            <div className="text-sm text-ink4">No task data</div>
+          )}
+        </div>
+
+        {/* Urgent + overdue quick tiles */}
+        <div className="flex flex-col gap-3">
+          <div className={`stat-tile flex-1 ${loading ? 'animate-pulse' : ''}`}>
+            <div className={`stat-value ${!loading && (clickup?.urgent ?? 0) > 0 ? 'text-danger' : 'text-ink'}`}>
+              {loading ? '—' : (clickup?.urgent ?? '—')}
+            </div>
+            <div className="stat-label">Urgent Tasks</div>
+            <div className="stat-sub">Need immediate action</div>
+          </div>
+          <div className={`stat-tile flex-1 ${loading ? 'animate-pulse' : ''}`}>
+            <div className={`stat-value ${!loading && (clickup?.overduePercent ?? 0) > 50 ? 'text-danger' : 'text-warning'}`}>
+              {loading ? '—' : `${clickup?.overduePercent ?? '—'}%`}
+            </div>
+            <div className="stat-label">CRM Overdue</div>
+            {!loading && clickup && <div className="stat-sub">{clickup.overdue} of {clickup.totalTasks} tasks</div>}
+          </div>
+        </div>
       </div>
 
       {/* Actions required */}
@@ -327,45 +346,26 @@ export default function DashboardPage() {
       <div className="slbl mt-6">Team Assignment Board</div>
       <p className="text-xs text-ink4 mb-3">Click any team member to see their assigned tasks from ClickUp.</p>
       <div className="space-y-2 mb-6">
-        {TEAM.map((member) => (
-          <MemberCard
-            key={member.name}
-            member={member}
-            stats={findStats(clickup?.assigneeStats, member.cuKey)}
-            tasks={findTasks(clickup?.tasksByAssignee, member.cuKey)}
-            filed={filed.some((f) => f.toLowerCase().includes(member.cuKey))}
-            loading={loading}
-          />
-        ))}
+        {TEAM.map((member) => {
+          const wwMember = webwork?.members?.find((m) => m.username === member.cuKey)
+          return (
+            <MemberCard
+              key={member.name}
+              member={member}
+              stats={findStats(clickup?.assigneeStats, member.cuKey)}
+              tasks={findTasks(clickup?.tasksByAssignee, member.cuKey)}
+              filed={filed.some((f) => f.toLowerCase().includes(member.cuKey))}
+              loading={loading}
+              sparkline={wwMember?.byDay}
+            />
+          )
+        })}
       </div>
 
       {/* OKR Pulse */}
       <div className="slbl">OKR Pulse</div>
-      <div className="card mb-6">
-        <div className="divide-y divide-sand3">
-          {OKRS.map((o) => {
-            const barColor = o.pct >= 80 ? 'bg-success' : o.pct >= 40 ? 'bg-accent' : o.pct >= 20 ? 'bg-warning' : 'bg-danger'
-            const textColor = o.pct >= 80 ? 'text-success' : o.pct >= 40 ? 'text-accent' : o.pct >= 20 ? 'text-warning' : 'text-danger'
-            return (
-              <div key={o.id} className="px-5 py-4">
-                <div className="flex items-center justify-between mb-2">
-                  <div className="flex items-center gap-3">
-                    <span className="text-xs font-mono text-ink4 w-14">{o.id}</span>
-                    <span className="text-base font-semibold">{o.label}</span>
-                  </div>
-                  <div className="flex items-center gap-3 flex-shrink-0">
-                    <span className="text-sm text-ink3 hidden sm:block">{o.note}</span>
-                    <span className={`text-lg font-bold tabular-nums ${textColor}`}>{o.pct}%</span>
-                  </div>
-                </div>
-                <div className="progress-track">
-                  <div className={`progress-fill ${barColor}`} style={{ width: `${Math.max(o.pct, 1)}%` }} />
-                </div>
-                <p className="text-sm text-ink4 mt-1 sm:hidden">{o.note}</p>
-              </div>
-            )
-          })}
-        </div>
+      <div className="card mb-6 px-5">
+        <OkrRings okrs={OKRS} />
       </div>
     </div>
   )

@@ -7,6 +7,9 @@ import { TEAM, REPORT_MEMBERS } from '@/lib/team'
 import type { Task, ClickUpData, SlackData, WebWorkMember, Meeting } from '@/lib/types'
 import { useMe } from '@/hooks/useMe'
 import StaleBadge from '@/components/StaleBadge'
+import dynamic from 'next/dynamic'
+const HoursBar = dynamic(() => import('@/components/charts/HoursBar'), { ssr: false })
+const OkrRings = dynamic(() => import('@/components/charts/OkrRing'), { ssr: false })
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -326,7 +329,7 @@ export default function ReportsPage() {
 
       {/* ── TEAM HOURS TAB ───────────────────────────────────── */}
       {tab === 'hours' && (
-        <div className="space-y-3">
+        <div className="space-y-4">
           {webworkLoading ? (
             <div className="text-ink4 text-sm animate-pulse">Loading WebWork hours…</div>
           ) : !webworkData || !webworkData.members ? (
@@ -335,27 +338,44 @@ export default function ReportsPage() {
             </div>
           ) : (
             <>
-              <div className="text-xs text-ink3 mb-2">
-                Week of {webworkData.week?.[0]} – {webworkData.week?.[6]}
+              <div className="text-xs text-ink3">
+                Week of {webworkData.week?.[0]} – {webworkData.week?.[webworkData.week.length - 1]}
+                <span className="ml-3 font-semibold text-ink">
+                  {Math.round(webworkData.members.reduce((s, m) => s + m.totalHours, 0) * 10) / 10}h total
+                </span>
               </div>
+
+              {/* Bar chart */}
+              <div className="card px-4 pt-4 pb-2">
+                <div className="slbl mb-0 text-xs">Hours This Week</div>
+                <HoursBar members={webworkData.members} />
+              </div>
+
+              {/* Detail rows */}
               <div className="card divide-y divide-sand3">
-                {[...webworkData.members].sort((a, b) => b.totalHours - a.totalHours).map(m => (
+                {[...webworkData.members].sort((a, b) => b.totalHours - a.totalHours).map((m, i) => (
                   <div key={m.username} className="flex items-center gap-3 px-4 py-3">
-                    <div className="w-7 h-7 flex items-center justify-center text-xs font-bold bg-sand2 text-ink flex-shrink-0">
+                    <div
+                      className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0 text-white"
+                      style={{ background: i === 0 ? '#4F46E5' : i === 1 ? '#818CF8' : '#C7D2FE', color: i < 2 ? '#fff' : '#4F46E5' }}
+                    >
                       {m.username[0].toUpperCase()}
                     </div>
                     <span className="text-sm font-semibold capitalize flex-1">{m.username}</span>
                     <div className="flex items-center gap-3">
-                      <div className="w-24 h-1.5 bg-sand3">
-                        <div className="h-full bg-black" style={{ width: `${Math.min(100, (m.totalHours / 40) * 100)}%` }} />
+                      <div className="w-28 h-2 bg-sand3 rounded-full overflow-hidden">
+                        <div
+                          className="h-full rounded-full"
+                          style={{
+                            width: `${Math.min(100, (m.totalHours / 40) * 100)}%`,
+                            background: i === 0 ? '#4F46E5' : i === 1 ? '#818CF8' : '#C7D2FE',
+                          }}
+                        />
                       </div>
-                      <span className="font-mono text-sm w-12 text-right">{m.totalHours}h</span>
+                      <span className="font-mono text-sm w-12 text-right tabular-nums">{m.totalHours}h</span>
                     </div>
                   </div>
                 ))}
-              </div>
-              <div className="text-xs text-ink4 text-right">
-                Total: {Math.round(webworkData.members.reduce((s, m) => s + m.totalHours, 0) * 10) / 10}h across team
               </div>
             </>
           )}
@@ -470,35 +490,8 @@ export default function ReportsPage() {
 
       {/* OKR Roll-Up */}
       <Section title="OKR Roll-Up">
-        <div className="card">
-          <div className="card-body overflow-x-auto p-0">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-sand3">
-                  {['ID', 'Objective', 'Progress', 'Note'].map((h) => (
-                    <th key={h} className="text-left px-4 py-2.5 text-xs font-extrabold uppercase tracking-widest text-ink3">{h}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {OKRS.map((o) => (
-                  <tr key={o.id} className="border-b border-sand3 last:border-0">
-                    <td className="px-4 py-2.5 font-mono text-xs text-ink3">{o.id}</td>
-                    <td className="px-4 py-2.5 font-bold">{o.label}</td>
-                    <td className="px-4 py-2.5">
-                      <div className="flex items-center gap-2">
-                        <div className="w-20 h-1.5 bg-sand3">
-                          <div className="h-full bg-black" style={{ width: `${Math.max(o.pct, 2)}%` }} />
-                        </div>
-                        <span className="font-mono text-xs">{o.pct}%</span>
-                      </div>
-                    </td>
-                    <td className="px-4 py-2.5 text-xs text-ink3">{o.note}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+        <div className="card px-5">
+          <OkrRings okrs={OKRS} />
         </div>
       </Section>
 
