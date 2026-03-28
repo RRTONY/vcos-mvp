@@ -111,7 +111,9 @@ function MemberCard({
         </div>
         <div className="flex items-center gap-2 flex-shrink-0">
           {sparkline && sparkline.length > 0 && (
-            <MemberSparkline byDay={sparkline} color={flow !== null && flow < 50 ? '#DC2626' : '#4F46E5'} />
+            <span className="hidden sm:block">
+              <MemberSparkline byDay={sparkline} color={flow !== null && flow < 50 ? '#DC2626' : '#4F46E5'} />
+            </span>
           )}
           {member.filesReport && (
             <span className={filed ? 'badge-green' : 'badge-red'}>
@@ -297,7 +299,7 @@ export default function DashboardPage() {
         </div>
 
         {/* CRM donut */}
-        <div className={`stat-tile ${loading ? 'animate-pulse' : ''}`}>
+        <div className={`stat-tile overflow-hidden ${loading ? 'animate-pulse' : ''}`}>
           <div className="stat-label mb-3">CRM Task Breakdown</div>
           {loading ? (
             <div className="h-24 flex items-center justify-center text-ink4 text-sm">Loading…</div>

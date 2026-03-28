@@ -32,7 +32,7 @@ export default function HoursBar({ members }: Props) {
 
   return (
     <ResponsiveContainer width="100%" height={220}>
-      <BarChart data={data} margin={{ top: 8, right: 8, left: -20, bottom: 0 }}>
+      <BarChart data={data} margin={{ top: 8, right: 4, left: -16, bottom: 0 }}>
         <XAxis
           dataKey="name"
           tick={{ fontSize: 11, fill: '#6B7280' }}

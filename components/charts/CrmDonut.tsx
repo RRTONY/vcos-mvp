@@ -29,9 +29,9 @@ export default function CrmDonut({ total, overdue, urgent, completed }: Props) {
   if (total === 0) return null
 
   return (
-    <div className="flex items-center gap-6">
+    <div className="flex flex-wrap items-center gap-4 justify-center sm:justify-start">
       {/* Donut */}
-      <div className="relative flex-shrink-0" style={{ width: 130, height: 130 }}>
+      <div className="relative flex-shrink-0" style={{ width: 120, height: 120 }}>
         <ResponsiveContainer width="100%" height="100%">
           <PieChart>
             <Pie
@@ -62,7 +62,7 @@ export default function CrmDonut({ total, overdue, urgent, completed }: Props) {
       </div>
 
       {/* Legend */}
-      <div className="space-y-2">
+      <div className="space-y-1.5 min-w-0">
         {data.map((d) => (
           <div key={d.name} className="flex items-center gap-2">
             <span className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ background: d.color }} />

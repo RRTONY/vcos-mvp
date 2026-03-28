@@ -25,7 +25,7 @@ function OkrRingItem({ okr }: { okr: OKR }) {
   const data = [{ value: Math.max(okr.pct, 1) }]
 
   return (
-    <div className="flex flex-col items-center">
+    <div className="flex flex-col items-center min-w-0">
       <div className="relative" style={{ width: 88, height: 88 }}>
         {/* Background track */}
         <svg className="absolute inset-0" width="88" height="88">
@@ -56,9 +56,9 @@ function OkrRingItem({ okr }: { okr: OKR }) {
           <span className="text-sm font-bold tabular-nums" style={{ color }}>{okr.pct}%</span>
         </div>
       </div>
-      <div className="mt-2 text-center">
-        <div className="text-xs font-semibold text-ink leading-tight max-w-[84px]">{okr.label}</div>
-        <div className="text-[10px] text-ink4 mt-0.5 max-w-[84px] truncate" title={okr.note}>{okr.note}</div>
+      <div className="mt-2 text-center w-full">
+        <div className="text-xs font-semibold text-ink leading-tight break-words">{okr.label}</div>
+        <div className="text-[10px] text-ink4 mt-0.5 truncate" title={okr.note}>{okr.note}</div>
       </div>
     </div>
   )
@@ -66,7 +66,7 @@ function OkrRingItem({ okr }: { okr: OKR }) {
 
 export default function OkrRings({ okrs }: Props) {
   return (
-    <div className="grid grid-cols-3 sm:grid-cols-6 gap-4 py-4">
+    <div className="grid grid-cols-3 sm:grid-cols-6 gap-x-2 gap-y-4 py-4">
       {okrs.map((o) => (
         <OkrRingItem key={o.id} okr={o} />
       ))}
