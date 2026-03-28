@@ -83,33 +83,38 @@ function MemberCard({
     <div className={`card mb-2 ${hasIssues ? 'border-danger/30' : ''}`}>
       <button
         onClick={() => setOpen((v) => !v)}
-        className="w-full flex items-center gap-3 px-5 py-4 text-left hover:bg-sand2 transition-colors rounded-lg"
+        className="w-full flex items-center gap-3 px-3 sm:px-5 py-3 sm:py-4 text-left hover:bg-sand2 transition-colors rounded-lg"
       >
         {/* Avatar */}
-        <div className={`w-10 h-10 rounded-full flex items-center justify-center font-bold text-base flex-shrink-0 ${hasIssues ? 'bg-danger text-white' : 'bg-accent-light text-accent'}`}>
+        <div className={`w-9 h-9 sm:w-10 sm:h-10 rounded-full flex items-center justify-center font-bold text-sm sm:text-base flex-shrink-0 ${hasIssues ? 'bg-danger text-white' : 'bg-accent-light text-accent'}`}>
           {member.name[0]}
         </div>
+
+        {/* Middle — name, role, progress */}
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 flex-wrap">
-            <span className="text-base font-semibold">{member.name}</span>
-            <span className="text-sm text-ink4">{member.role}</span>
+            <span className="text-sm sm:text-base font-semibold">{member.name}</span>
+            <span className="hidden sm:inline text-sm text-ink4">{member.role}</span>
           </div>
           {loading ? (
-            <div className="h-2 w-24 bg-sand3 rounded mt-2 animate-pulse" />
+            <div className="h-2 w-20 bg-sand3 rounded mt-1.5 animate-pulse" />
           ) : stats && flow !== null ? (
-            <div className="flex items-center gap-3 mt-2">
-              <div className="progress-track w-24">
+            <div className="flex items-center gap-2 mt-1.5 flex-wrap">
+              <div className="progress-track w-20 sm:w-24">
                 <div className={`progress-fill ${flowColor}`} style={{ width: `${flow}%` }} />
               </div>
-              <span className="text-sm text-ink3">{flow}% on track</span>
+              <span className="text-xs sm:text-sm text-ink3">{flow}%</span>
+              {/* Badges inline on mobile, shown here */}
               {stats.overdue > 0 && <span className="badge-red">{stats.overdue} overdue</span>}
               {stats.urgent > 0 && <span className="badge-amber">{stats.urgent} urgent</span>}
             </div>
           ) : (
-            <span className="text-sm text-ink4 mt-1 block">No tasks in ClickUp</span>
+            <span className="text-xs text-ink4 mt-1 block">No tasks</span>
           )}
         </div>
-        <div className="flex items-center gap-2 flex-shrink-0">
+
+        {/* Right — sparkline + filed badge + count + chevron */}
+        <div className="flex items-center gap-1.5 sm:gap-2 flex-shrink-0">
           {sparkline && sparkline.length > 0 && (
             <span className="hidden sm:block">
               <MemberSparkline byDay={sparkline} color={flow !== null && flow < 50 ? '#DC2626' : '#4F46E5'} />
@@ -120,8 +125,10 @@ function MemberCard({
               {filed ? 'Filed' : 'Missing'}
             </span>
           )}
-          {stats && <span className="text-sm text-ink4">{stats.total} tasks</span>}
-          <span className="text-ink4 text-sm ml-1">{open ? '▲' : '▼'}</span>
+          {stats && (
+            <span className="hidden sm:inline text-sm text-ink4">{stats.total} tasks</span>
+          )}
+          <span className="text-ink4 text-xs ml-0.5">{open ? '▲' : '▼'}</span>
         </div>
       </button>
 
