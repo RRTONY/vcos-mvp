@@ -2,6 +2,7 @@
 
 import { useState, Suspense } from 'react'
 import { useSearchParams, useRouter } from 'next/navigation'
+import { RAMPRATE_LOGO_B64 } from '@/lib/logo'
 
 function LoginForm() {
   const [username, setUsername] = useState('')
@@ -40,7 +41,11 @@ function LoginForm() {
     <div className="w-full max-w-sm">
       {/* Brand */}
       <div className="text-center mb-8">
-        <div className="font-display text-4xl tracking-widest mb-1">RAMPRATE</div>
+        <img
+          src={RAMPRATE_LOGO_B64}
+          alt="RampRate"
+          className="h-12 w-auto mx-auto mb-3 object-contain"
+        />
         <div className="text-xs text-ink3 uppercase tracking-widest">Visual Chief of Staff</div>
       </div>
 

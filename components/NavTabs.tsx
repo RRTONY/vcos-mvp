@@ -28,7 +28,7 @@ export default function NavTabs() {
   const allTabs = isAdmin ? [...TABS, ...ADMIN_TABS] : TABS
 
   return (
-    <div className="flex border-b border-sand4 bg-sand overflow-x-auto sticky top-14 z-30 shadow-sm">
+    <div className="flex border-b border-sand4 bg-sand overflow-x-auto sticky top-16 z-30">
       {allTabs.map((t) => {
         const active = t.href === '/' ? path === '/' : path.startsWith(t.href)
         return (
