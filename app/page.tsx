@@ -161,21 +161,24 @@ export default function DashboardPage() {
   const [slack, setSlack] = useState<SlackData | null>(null)
   const [clickup, setClickUp] = useState<ClickUpData | null>(null)
   const [webwork, setWebwork] = useState<{ members: WebWorkMember[] } | null>(null)
+  const [screenshots, setScreenshots] = useState<Record<string, { url: string; filename: string; capturedAt: string | null }[]> | null>(null)
   const [loading, setLoading] = useState(true)
   const { refreshKey, freshClickUp } = useRefresh()
   const prevKey = useRef(refreshKey)
 
   const load = useCallback(async (cancelled: { v: boolean }, cachedClickUp?: Record<string, unknown> | null) => {
     setLoading(true)
-    const [s, c, w] = await Promise.all([
+    const [s, c, w, sc] = await Promise.all([
       fetch('/api/slack-stats', { cache: 'no-store' }).then((r) => r.json()).catch(() => null),
       cachedClickUp ? Promise.resolve(cachedClickUp) : fetch('/api/clickup-tasks', { cache: 'no-store' }).then((r) => r.json()).catch(() => null),
       fetch('/api/webwork', { cache: 'no-store' }).then((r) => r.json()).catch(() => null),
+      fetch('/api/screenshots', { cache: 'no-store' }).then((r) => r.json()).catch(() => null),
     ])
     if (!cancelled.v) {
       setSlack(s)
       setClickUp(c)
       setWebwork(w)
+      setScreenshots(sc?.screenshots ?? null)
       setLoading(false)
     }
   }, [])
@@ -370,6 +373,56 @@ export default function DashboardPage() {
           )
         })}
       </div>
+
+      {/* Team Screenshots */}
+      {screenshots && Object.values(screenshots).some(arr => arr.length > 0) && (
+        <div className="mb-6">
+          <div className="slbl">Team Screenshots — Today</div>
+          <div className="card divide-y divide-sand3">
+            {TEAM.filter(m => screenshots[m.cuKey]?.length > 0).map(member => {
+              const shots = screenshots[member.cuKey] ?? []
+              return (
+                <div key={member.cuKey} className="px-4 py-3">
+                  <div className="flex items-center gap-2 mb-2">
+                    <span className="text-sm font-semibold">{member.name}</span>
+                    <span className="text-xs text-ink4">{shots.length} screenshot{shots.length !== 1 ? 's' : ''}</span>
+                    {shots[0]?.capturedAt && shots[shots.length - 1]?.capturedAt && (
+                      <span className="text-xs text-ink4 hidden sm:inline">
+                        · {shots[0].capturedAt} – {shots[shots.length - 1].capturedAt}
+                      </span>
+                    )}
+                  </div>
+                  {/* Thumbnail strip — scrollable on mobile */}
+                  <div className="flex gap-2 overflow-x-auto pb-1">
+                    {shots.map((shot, i) => (
+                      <a
+                        key={i}
+                        href={shot.url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="flex-shrink-0 group relative"
+                        title={shot.capturedAt ?? shot.filename}
+                      >
+                        <img
+                          src={shot.url}
+                          alt={shot.capturedAt ?? `Screenshot ${i + 1}`}
+                          className="w-20 h-14 sm:w-24 sm:h-16 object-cover rounded border border-sand3 group-hover:border-accent transition-colors"
+                          loading="lazy"
+                        />
+                        {shot.capturedAt && (
+                          <span className="absolute bottom-0 left-0 right-0 text-center text-[9px] bg-black/50 text-white rounded-b px-1 py-0.5">
+                            {shot.capturedAt}
+                          </span>
+                        )}
+                      </a>
+                    ))}
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        </div>
+      )}
 
       {/* OKR Pulse */}
       <div className="slbl">OKR Pulse</div>
