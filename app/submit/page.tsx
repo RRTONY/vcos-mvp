@@ -4,29 +4,12 @@ import { useState, useRef } from 'react'
 import { useToast } from '@/components/Toast'
 import { TEAM_NAMES, HOURS_MEMBERS } from '@/lib/team'
 
-interface CheckState {
-  invoiceSubmitted: boolean
-  webworkConfirmed: boolean
-  emailMeterConfirmed: boolean
-  slackReportConfirmed: boolean
-}
-
 export default function SubmitPage() {
   const { toast } = useToast()
   const [submitting, setSubmitting] = useState(false)
   const [submitted, setSubmitted] = useState(false)
-  const [checks, setChecks] = useState<CheckState>({
-    invoiceSubmitted: false,
-    webworkConfirmed: false,
-    emailMeterConfirmed: false,
-    slackReportConfirmed: false,
-  })
   const [hours, setHours] = useState<Record<string, string>>({})
   const formRef = useRef<HTMLFormElement>(null)
-
-  function toggleCheck(key: keyof CheckState) {
-    setChecks((prev) => ({ ...prev, [key]: !prev[key] }))
-  }
 
   function totalHours() {
     return Object.values(hours).reduce((sum, v) => sum + (parseFloat(v) || 0), 0)
@@ -38,9 +21,6 @@ export default function SubmitPage() {
     const fd = new FormData(form)
     const name = fd.get('name') as string
     if (!name) { toast('Please select your name first'); return }
-
-    const allChecked = Object.values(checks).every(Boolean)
-    if (!allChecked) { toast('Complete all 4 Braintrust checklist items first'); return }
 
     const hoursObj: Record<string, number> = {}
     HOURS_MEMBERS.forEach((m, i) => {
@@ -57,13 +37,6 @@ export default function SubmitPage() {
       priorities: fd.get('priorities') as string,
       blockers: fd.get('blockers') as string,
       win: fd.get('win') as string,
-      braintrust: {
-        ...checks,
-        invoiceLink: fd.get('btLink') as string,
-        webworkLink: fd.get('wwLink') as string,
-        emailMeterLink: fd.get('emLink') as string,
-        slackReportLink: fd.get('slLink') as string,
-      },
       hours: hoursObj,
     }
 
@@ -136,33 +109,6 @@ export default function SubmitPage() {
             <label className="text-xs font-bold uppercase tracking-widest text-ink3 block mb-1">7. Win of the Week</label>
             <input name="win" className="field-input" type="text" placeholder="One sentence..." />
           </div>
-        </div>
-      </div>
-
-      <div className="card">
-        <div className="card-hd">
-          <div className="card-ti">Braintrust Compliance</div>
-          <span className="badge-red">Required for Payroll</span>
-        </div>
-        <div className="card-body space-y-3">
-          {([
-            { key: 'invoiceSubmitted', label: 'Braintrust invoice submitted this period?', urlName: 'btLink', placeholder: 'Paste Braintrust invoice URL...' },
-            { key: 'webworkConfirmed', label: 'WebWork screenshots cover full work period?', urlName: 'wwLink', placeholder: 'Paste WebWork screenshot link or folder URL...' },
-            { key: 'emailMeterConfirmed', label: 'Email Meter report submitted for this week?', urlName: 'emLink', placeholder: 'Paste Email Meter report link...' },
-            { key: 'slackReportConfirmed', label: 'Slack weekly report posted and linked in #weeklyreports?', urlName: 'slLink', placeholder: 'Paste Slack message permalink...' },
-          ] as { key: keyof CheckState; label: string; urlName: string; placeholder: string }[]).map((item) => (
-            <div key={item.key}>
-              <div className="check-row" onClick={() => toggleCheck(item.key)}>
-                <div className={`check-box ${checks[item.key] ? 'checked' : ''}`}>
-                  {checks[item.key] && <span className="text-sand text-[10px] font-bold">✓</span>}
-                </div>
-                <span className={`text-sm ${checks[item.key] ? 'line-through text-ink4' : ''}`}>{item.label}</span>
-              </div>
-              <div className="pl-6">
-                <input name={item.urlName} className="field-input text-xs" type="url" placeholder={item.placeholder} />
-              </div>
-            </div>
-          ))}
         </div>
       </div>
 

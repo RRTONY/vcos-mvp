@@ -5,6 +5,20 @@ import { useRefresh } from '@/components/RefreshContext'
 import { ShareSlackButton } from '@/components/ShareButtons'
 import { useMe } from '@/hooks/useMe'
 
+interface CheckState {
+  invoiceSubmitted: boolean
+  webworkConfirmed: boolean
+  emailMeterConfirmed: boolean
+  slackReportConfirmed: boolean
+}
+
+const BT_ITEMS: { key: keyof CheckState; label: string; urlName: string; placeholder: string }[] = [
+  { key: 'invoiceSubmitted',    label: 'Braintrust invoice submitted this period?',              urlName: 'btLink', placeholder: 'Paste Braintrust invoice URL...' },
+  { key: 'webworkConfirmed',    label: 'WebWork screenshots cover full work period?',             urlName: 'wwLink', placeholder: 'Paste WebWork screenshot link or folder URL...' },
+  { key: 'emailMeterConfirmed', label: 'Email Meter report submitted for this week?',             urlName: 'emLink', placeholder: 'Paste Email Meter report link...' },
+  { key: 'slackReportConfirmed',label: 'Slack weekly report posted and linked in #weeklyreports?',urlName: 'slLink', placeholder: 'Paste Slack message permalink...' },
+]
+
 interface Member {
   name: string
   role: string
@@ -24,20 +38,17 @@ const BASE_TEAM: Member[] = [
   { name: 'Tony', role: 'CEO', rate: 0, filed: false, bt: 'N/A' },
 ]
 
-const BT_CHECKS = [
-  'Braintrust invoice submitted with link',
-  'WebWork screenshots cover full work period',
-  'Email Meter report submitted for this week',
-  'Slack weekly report posted and linked',
-  'Hours billed match WebWork within 0.5hr tolerance',
-  'Alex approval confirmed before UBS money request',
-]
 
 export default function CompliancePage() {
   const { isAdmin, isOwner } = useMe()
   const [team, setTeam] = useState<Member[]>(BASE_TEAM)
-  const [checked, setChecked] = useState<boolean[]>(BT_CHECKS.map(() => false))
+  const [checks, setChecks] = useState<CheckState>({ invoiceSubmitted: false, webworkConfirmed: false, emailMeterConfirmed: false, slackReportConfirmed: false })
+  const [urls, setUrls] = useState<Record<string, string>>({})
   const { refreshKey } = useRefresh()
+
+  function toggleCheck(key: keyof CheckState) {
+    setChecks((prev) => ({ ...prev, [key]: !prev[key] }))
+  }
 
   useEffect(() => {
     fetch('/api/slack-stats', { cache: 'no-store' })
@@ -104,19 +115,26 @@ export default function CompliancePage() {
       <div className="card">
         <div className="card-hd">
           <div className="card-ti">Pre-Payroll Gate</div>
-          <span className="text-xs text-ink3">Due Mar 18</span>
+          <span className="badge-red">Required for Payroll</span>
         </div>
-        <div className="card-body">
-          {BT_CHECKS.map((c, i) => (
-            <div
-              key={i}
-              className="check-row"
-              onClick={() => setChecked((prev) => prev.map((v, j) => (j === i ? !v : v)))}
-            >
-              <div className={`check-box ${checked[i] ? 'checked' : ''}`}>
-                {checked[i] && <span className="text-sand text-[10px] font-bold">✓</span>}
+        <div className="card-body space-y-3">
+          {BT_ITEMS.map((item) => (
+            <div key={item.key}>
+              <div className="check-row" onClick={() => toggleCheck(item.key)}>
+                <div className={`check-box ${checks[item.key] ? 'checked' : ''}`}>
+                  {checks[item.key] && <span className="text-sand text-[10px] font-bold">✓</span>}
+                </div>
+                <span className={`text-sm ${checks[item.key] ? 'line-through text-ink4' : ''}`}>{item.label}</span>
               </div>
-              <span className={`text-sm ${checked[i] ? 'line-through text-ink4' : ''}`}>{c}</span>
+              <div className="pl-6 mt-1">
+                <input
+                  className="field-input text-xs"
+                  type="url"
+                  placeholder={item.placeholder}
+                  value={urls[item.urlName] ?? ''}
+                  onChange={(e) => setUrls((u) => ({ ...u, [item.urlName]: e.target.value }))}
+                />
+              </div>
             </div>
           ))}
         </div>
