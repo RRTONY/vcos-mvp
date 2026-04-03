@@ -6,7 +6,7 @@ import { COOKIE_NAME, verifySession } from '@/lib/auth'
 import { buildInvoicesSnapshot } from '@/lib/invoices'
 import { recordSuccess } from '@/lib/api-cache'
 
-const LIST_ID = process.env.CLICKUP_INVOICE_LIST_ID ?? '901102575315'
+const LIST_ID = process.env.CLICKUP_INVOICE_LIST_ID ?? '901113518927'
 
 export async function POST(req: NextRequest) {
   // RBAC — admin only

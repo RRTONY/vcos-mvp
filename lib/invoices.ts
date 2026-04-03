@@ -1,4 +1,4 @@
-const LIST_ID = process.env.CLICKUP_INVOICE_LIST_ID ?? '901102575315'
+const LIST_ID = process.env.CLICKUP_INVOICE_LIST_ID ?? '901113518927'
 
 interface CUTask {
   id: string
