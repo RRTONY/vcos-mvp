@@ -1,11 +1,21 @@
 // Braintrust PDF invoice parser
-// Braintrust invoice PDFs typically contain:
-//   Contractor name, invoice number, period, hours, rate, amount, payment status
+// Actual Braintrust invoice format:
+//   INVOICE NUMBER: Ra-045-KD
+//   REMIT TO: Accelerated Labs, Inc. ...
+//   DATE: 03/16/26
+//   DUE DATE: 03/31/26
+//   BILL TO: RampRate ...
+//   TALENT: Kimberly Dofredo
+//   COMPANY NAME: RampRate A Team Inc.
+//   PROJECT: Executive Administrator...
+//   DATE RANGE ... DESCRIPTION ... UNIT PRICE  QTY  AMOUNT
+//   2026-03-01 / 2026-03-15  -  Hours March 1-15, 2026  $12.50  68.13  $851.63
+//   SUB-TOTAL: $851.63 / TOTAL: $851.63
 
 export interface InvoiceRecord {
   contractor: string
   invoiceNumber: string
-  period: string      // e.g. "Mar 1–15, 2026"
+  period: string
   hours: number
   rate: number        // hourly rate — blinded from non-admins
   amount: number      // total — blinded from non-admins
@@ -14,91 +24,94 @@ export interface InvoiceRecord {
 }
 
 export async function parseBraintrustPdf(buffer: Buffer): Promise<InvoiceRecord[]> {
-  // Dynamically import pdf-parse (server-side only)
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const pdfParse: any = await import('pdf-parse')
-  const parse = pdfParse.default ?? pdfParse
-  const data = await parse(buffer)
-  const text = data.text
-
-  return extractInvoices(text)
+  // Use lib path directly — avoids pdf-parse loading its test PDF on import (Object.defineProperty error)
+  // eslint-disable-next-line @typescript-eslint/no-require-imports, @typescript-eslint/no-explicit-any
+  const pdfParse: (b: Buffer) => Promise<{ text: string }> = require('pdf-parse/lib/pdf-parse') as any
+  const data = await pdfParse(buffer)
+  return extractInvoices(data.text)
 }
 
 function extractInvoices(text: string): InvoiceRecord[] {
-  const records: InvoiceRecord[] = []
   const lines = text.split('\n').map(l => l.trim()).filter(Boolean)
 
-  // Braintrust PDF structure varies, but common patterns:
-  // "Invoice #INV-XXXXXX"
-  // "Contractor: Full Name"
-  // "Period: Mar 1 - Mar 15, 2026"
-  // "Hours: 40.00"
-  // "Rate: $125.00/hr"
-  // "Total: $5,000.00"
-  // "Status: Paid"
+  const record: Partial<InvoiceRecord> = {
+    parsedAt: new Date().toISOString(),
+    status: 'unknown',
+  }
 
-  let current: Partial<InvoiceRecord> = {}
-  let i = 0
-
-  while (i < lines.length) {
+  for (let i = 0; i < lines.length; i++) {
     const line = lines[i]
+    const next = lines[i + 1] ?? ''
 
-    // Invoice number
-    const invMatch = line.match(/invoice\s*#?\s*(INV-[\w-]+)/i)
-    if (invMatch) {
-      if (current.invoiceNumber) {
-        records.push(finalise(current))
-        current = {}
-      }
-      current.invoiceNumber = invMatch[1]
-      current.parsedAt = new Date().toISOString()
+    // Invoice number — line after "INVOICE NUMBER"
+    if (/^INVOICE\s+NUMBER$/i.test(line)) {
+      record.invoiceNumber = next
+      i++
+      continue
     }
 
-    // Contractor name
-    const nameMatch = line.match(/^contractor[:\s]+(.+)/i) ||
-                      line.match(/^contractor name[:\s]+(.+)/i) ||
-                      line.match(/^name[:\s]+(.+)/i)
-    if (nameMatch) current.contractor = nameMatch[1].trim()
+    // Contractor name — line after "TALENT"
+    if (/^TALENT$/i.test(line)) {
+      record.contractor = next
+      i++
+      continue
+    }
 
-    // Period
-    const periodMatch = line.match(/^(?:period|billing period|dates?)[:\s]+(.+)/i)
-    if (periodMatch) current.period = periodMatch[1].trim()
+    // Period from date range lines like "2026-03-01" followed by "2026-03-15"
+    // or description like "Hours March 1-15, 2026"
+    if (/^\d{4}-\d{2}-\d{2}$/.test(line) && /^\d{4}-\d{2}-\d{2}$/.test(next)) {
+      record.period = `${line} to ${next}`
+      i++
+      continue
+    }
 
-    // Hours
-    const hoursMatch = line.match(/^(?:hours|total hours)[:\s]+([\d.]+)/i)
-    if (hoursMatch) current.hours = parseFloat(hoursMatch[1])
+    // Description with period like "Hours March 1-15, 2026" or "RampRate and ImpactSoul Hours March 1-15, 2026"
+    const descPeriod = line.match(/hours?\s+(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\s+[\d\-–]+,?\s*\d{4}/i)
+    if (descPeriod && !record.period) {
+      record.period = descPeriod[0]
+    }
 
-    // Rate
-    const rateMatch = line.match(/^(?:rate|hourly rate)[:\s]+\$?([\d,]+(?:\.\d+)?)/i)
-    if (rateMatch) current.rate = parseFloat(rateMatch[1].replace(/,/g, ''))
+    // Amount line: "$12.50 68.13$851.63" — rate QTY amount (no space before 2nd $)
+    const amtLine = line.match(/^\$([\d,]+\.?\d*)\s+([\d,]+\.?\d*)\$([\d,]+\.?\d*)$/)
+    if (amtLine) {
+      record.rate   = parseFloat(amtLine[1].replace(/,/g, ''))
+      record.hours  = parseFloat(amtLine[2].replace(/,/g, ''))
+      record.amount = parseFloat(amtLine[3].replace(/,/g, ''))
+      continue
+    }
 
-    // Amount / Total
-    const amtMatch = line.match(/^(?:total|amount|subtotal)[:\s]+\$?([\d,]+(?:\.\d+)?)/i)
-    if (amtMatch) current.amount = parseFloat(amtMatch[1].replace(/,/g, ''))
+    // TOTAL line as fallback for amount: "TOTAL" followed by "$851.63"
+    if (/^TOTAL$/i.test(line)) {
+      const totalAmt = next.match(/^\$([\d,]+\.?\d*)$/)
+      if (totalAmt && !record.amount) {
+        record.amount = parseFloat(totalAmt[1].replace(/,/g, ''))
+        i++
+      }
+      continue
+    }
 
     // Status
-    if (/paid/i.test(line)) current.status = 'paid'
-    else if (/pending|unpaid|due/i.test(line)) current.status = 'pending'
-
-    i++
+    if (/\bpaid\b/i.test(line)) record.status = 'paid'
+    else if (/\bpending|unpaid|due\b/i.test(line)) record.status = 'pending'
   }
 
-  if (current.invoiceNumber || current.contractor) {
-    records.push(finalise(current))
-  }
+  // If amount found but no explicit status, mark as pending
+  if (record.status === 'unknown' && record.amount) record.status = 'pending'
 
-  return records
+  if (!record.contractor && !record.invoiceNumber) return []
+
+  return [finalise(record)]
 }
 
 function finalise(partial: Partial<InvoiceRecord>): InvoiceRecord {
   return {
-    contractor: partial.contractor ?? 'Unknown',
+    contractor:    partial.contractor    ?? 'Unknown',
     invoiceNumber: partial.invoiceNumber ?? `INV-${Date.now()}`,
-    period: partial.period ?? '',
-    hours: partial.hours ?? 0,
-    rate: partial.rate ?? 0,
-    amount: partial.amount ?? (partial.hours && partial.rate ? partial.hours * partial.rate : 0),
-    status: partial.status ?? 'unknown',
-    parsedAt: partial.parsedAt ?? new Date().toISOString(),
+    period:        partial.period        ?? '',
+    hours:         partial.hours         ?? 0,
+    rate:          partial.rate          ?? 0,
+    amount:        partial.amount        ?? (partial.hours && partial.rate ? partial.hours * partial.rate : 0),
+    status:        partial.status        ?? 'unknown',
+    parsedAt:      partial.parsedAt      ?? new Date().toISOString(),
   }
 }
