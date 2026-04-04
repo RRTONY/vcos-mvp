@@ -42,16 +42,18 @@ function extractInvoices(text: string): InvoiceRecord[] {
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i]
     const next = lines[i + 1] ?? ''
+    // stripped: removes all spaces so "I N VO I C E  N U M B E R" → "INVOICENUMBER"
+    const stripped = line.replace(/\s/g, '')
 
-    // Invoice number — line after "INVOICE NUMBER"
-    if (/^INVOICE\s+NUMBER$/i.test(line)) {
+    // Invoice number — line after "INVOICE NUMBER" (with or without letter spacing)
+    if (/^INVOICENUMBER$/i.test(stripped)) {
       record.invoiceNumber = next
       i++
       continue
     }
 
-    // Contractor name — line after "TALENT"
-    if (/^TALENT$/i.test(line)) {
+    // Contractor name — line after "TALENT" (with or without letter spacing)
+    if (/^TALENT$/i.test(stripped)) {
       record.contractor = next
       i++
       continue

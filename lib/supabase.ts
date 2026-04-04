@@ -7,7 +7,9 @@ export function getSupabase(): SupabaseClient {
     const url = process.env.SUPABASE_URL
     const key = process.env.SUPABASE_SERVICE_KEY
     if (!url || !key) throw new Error('SUPABASE_URL and SUPABASE_SERVICE_KEY must be set')
-    _client = createClient(url, key)
+    _client = createClient(url, key, {
+      global: { fetch: (input, init) => fetch(input, { ...init, cache: 'no-store' }) },
+    })
   }
   return _client
 }

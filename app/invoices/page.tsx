@@ -10,11 +10,12 @@ interface Invoice {
   invoiceNumber: string
   period: string
   hours: number
-  rate: number      // admin-only
+  rate: number      // owner-only
   amount: number    // admin-only
   status: string
   parsedAt: string
-  clickupUrl?: string
+  clickupTaskId: string | null
+  clickupUrl: string | null
 }
 
 const STATUS_STYLE: Record<string, string> = {
@@ -27,8 +28,11 @@ export default function InvoicesPage() {
   const { me, isAdmin, isOwner } = useMe()
   const [invoices, setInvoices] = useState<Invoice[]>([])
   const [loading, setLoading] = useState(true)
+  const [loadError, setLoadError] = useState('')
   const [uploading, setUploading] = useState(false)
   const [uploadMsg, setUploadMsg] = useState('')
+  const [uploadWarnings, setUploadWarnings] = useState<string[]>([])
+  const [pushing, setPushing] = useState<string | null>(null)
   const fileRef = useRef<HTMLInputElement>(null)
   const { refreshKey } = useRefresh()
 
@@ -36,8 +40,12 @@ export default function InvoicesPage() {
     setLoading(true)
     fetch('/api/invoices', { cache: 'no-store' })
       .then(r => r.json())
-      .then(d => { setInvoices(d.invoices ?? []); setLoading(false) })
-      .catch(() => setLoading(false))
+      .then(d => {
+        setInvoices(d.invoices ?? [])
+        setLoadError(d.error ?? '')
+        setLoading(false)
+      })
+      .catch((e) => { setLoadError(String(e)); setLoading(false) })
   }, [refreshKey])
 
   async function handleUpload(e: React.ChangeEvent<HTMLInputElement>) {
@@ -45,16 +53,18 @@ export default function InvoicesPage() {
     if (!file) return
     setUploading(true)
     setUploadMsg('')
+    setUploadWarnings([])
     const form = new FormData()
     form.append('pdf', file)
     try {
       const res = await fetch('/api/invoices/upload', { method: 'POST', body: form })
       const d = await res.json()
       if (res.ok) {
-        setUploadMsg(`✓ Imported ${d.count} invoice${d.count !== 1 ? 's' : ''}`)
-        // Reload
-        const fresh = await fetch('/api/invoices', { cache: 'no-store' }).then(r => r.json())
-        setInvoices(fresh.invoices ?? [])
+        const warnings: string[] = d.clickupWarnings ?? []
+        setUploadMsg(`✓ Imported ${d.count} invoice${d.count !== 1 ? 's' : ''}${warnings.length > 0 ? ' — ClickUp sync failed' : ' and sent to ClickUp'}`)
+        setUploadWarnings(warnings)
+        // Prepend newly imported invoices to the list directly — no second fetch needed
+        setInvoices((prev) => [...(d.invoices ?? []), ...prev])
       } else {
         setUploadMsg(`Error: ${d.error}`)
       }
@@ -63,6 +73,25 @@ export default function InvoicesPage() {
     } finally {
       setUploading(false)
       if (fileRef.current) fileRef.current.value = ''
+    }
+  }
+
+  async function handleSendToClickUp(id: string) {
+    setPushing(id)
+    try {
+      const res = await fetch(`/api/invoices/${id}/clickup`, { method: 'POST' })
+      const d = await res.json()
+      if (res.ok) {
+        setInvoices(prev => prev.map(inv =>
+          inv.id === id ? { ...inv, clickupTaskId: d.taskId, clickupUrl: d.url } : inv
+        ))
+      } else {
+        alert(`ClickUp error: ${d.error}`)
+      }
+    } catch {
+      alert('Failed to send to ClickUp')
+    } finally {
+      setPushing(null)
     }
   }
 
@@ -96,6 +125,20 @@ export default function InvoicesPage() {
         )}
       </div>
 
+      {loadError && (
+        <div className="alert alert-amber mt-2 mb-2 text-xs">
+          <span className="font-bold">Failed to load invoices:</span> {loadError}
+        </div>
+      )}
+
+      {uploadWarnings.length > 0 && (
+        <div className="alert alert-amber mt-2 text-xs space-y-1">
+          <div className="font-bold">Invoice saved but ClickUp sync failed:</div>
+          {uploadWarnings.map((w, i) => <div key={i}>• {w}</div>)}
+          <div className="text-ink3 mt-1">Use the "+ ClickUp" button in the table to retry.</div>
+        </div>
+      )}
+
       {!isAdmin && (
         <div className="alert alert-blue mb-4 text-xs">
           Showing your invoices only. Rates and amounts are private.
@@ -109,7 +152,7 @@ export default function InvoicesPage() {
           ) : visible.length === 0 ? (
             <div className="p-4 text-sm text-ink4">
               {isAdmin
-                ? 'No invoices yet. Upload a Braintrust PDF export to get started.'
+                ? 'No invoices yet. Upload a Braintrust PDF to get started.'
                 : 'No invoices on file for your account yet.'}
             </div>
           ) : (
@@ -128,7 +171,9 @@ export default function InvoicesPage() {
                       <th className="text-right py-2 px-3 text-xs font-extrabold uppercase tracking-widest text-ink3">Amount</th>
                     )}
                     <th className="text-center py-2 px-3 text-xs font-extrabold uppercase tracking-widest text-ink3">Status</th>
-                    {isAdmin && <th className="py-2 px-3" />}
+                    {isAdmin && (
+                      <th className="text-left py-2 px-3 text-xs font-extrabold uppercase tracking-widest text-ink3">ClickUp</th>
+                    )}
                   </tr>
                 </thead>
                 <tbody>
@@ -155,9 +200,19 @@ export default function InvoicesPage() {
                       </td>
                       {isAdmin && (
                         <td className="py-2.5 px-3">
-                          {inv.clickupUrl && (
-                            <a href={inv.clickupUrl} target="_blank" rel="noopener noreferrer"
-                               className="text-xs text-ink4 hover:text-ink underline">ClickUp ↗</a>
+                          {inv.clickupTaskId ? (
+                            <a href={inv.clickupUrl ?? '#'} target="_blank" rel="noopener noreferrer"
+                               className="text-xs text-ink4 hover:text-ink underline">
+                              View ↗
+                            </a>
+                          ) : (
+                            <button
+                              onClick={() => handleSendToClickUp(inv.id)}
+                              disabled={pushing === inv.id}
+                              className="text-xs text-ink3 border border-sand3 px-2 py-0.5 hover:border-ink3 hover:text-ink transition-colors disabled:opacity-40"
+                            >
+                              {pushing === inv.id ? '…' : '+ ClickUp'}
+                            </button>
                           )}
                         </td>
                       )}
@@ -172,7 +227,7 @@ export default function InvoicesPage() {
 
       {isAdmin && (
         <div className="text-xs text-ink4 mt-2">
-          Amounts are visible to all admins. Rates are visible to Tony only.
+          Amounts visible to all admins. Rates visible to Tony only.
         </div>
       )}
     </div>
