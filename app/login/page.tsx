@@ -52,14 +52,14 @@ function LoginForm() {
       {/* Form */}
       <form onSubmit={handleSubmit} className="space-y-4">
         <div>
-          <label htmlFor="username" className="field-label">Username</label>
+          <label htmlFor="username" className="field-label">Username or Email</label>
           <input
             id="username"
             type="text"
             value={username}
             onChange={(e) => setUsername(e.target.value)}
             className="w-full border border-sand3 bg-white px-4 py-3 text-base focus:outline-none focus:border-ink transition-colors"
-            placeholder="your username"
+            placeholder="username or email"
             autoCapitalize="none"
             autoCorrect="off"
             autoComplete="username"
