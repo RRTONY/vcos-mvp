@@ -2,9 +2,14 @@ import { NextRequest, NextResponse } from 'next/server'
 import Anthropic from '@anthropic-ai/sdk'
 import { postMessage } from '@/lib/slack'
 import { getSupabase } from '@/lib/supabase'
+import { getTeamMemberByUsername } from '@/lib/team-db'
 
 import { SLACK_CHANNEL_WEEKLY_REPORTS } from '@/lib/constants'
 const SLACK_CHANNEL = process.env.SLACK_CHANNEL_WEEKLY_REPORTS ?? SLACK_CHANNEL_WEEKLY_REPORTS
+
+function isManager(role: string | null): boolean {
+  return role === 'admin' || role === 'owner'
+}
 
 interface ReportBody {
   name: string
@@ -76,10 +81,27 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 })
   }
 
-  const { name, week } = body
-  if (!name || !week) {
-    return NextResponse.json({ error: 'name and week are required' }, { status: 400 })
+  const { week } = body
+  let { name } = body
+  if (!week) {
+    return NextResponse.json({ error: 'week is required' }, { status: 400 })
   }
+
+  // Non-managers may only submit a report as themselves — ignore any client-set
+  // name and force their own mapped full name. Managers can submit for anyone.
+  const role = req.headers.get('x-role')
+  const username = req.headers.get('x-user')
+  if (!isManager(role)) {
+    const member = username ? await getTeamMemberByUsername(username) : null
+    if (!member?.full_name) {
+      return NextResponse.json({ error: 'Your account is not linked to a team member, so you cannot submit a report. Contact an admin.' }, { status: 403 })
+    }
+    name = member.full_name
+  }
+  if (!name) {
+    return NextResponse.json({ error: 'name is required' }, { status: 400 })
+  }
+  body.name = name
 
   const lines: string[] = [
     '#myweeklyreport',
@@ -149,12 +171,24 @@ export async function GET(req: NextRequest) {
 
   const weekStart = req.nextUrl.searchParams.get('week_start')
 
+  // Non-managers may only read their own reports.
+  let ownName: string | null = null
+  if (!isManager(role)) {
+    const username = req.headers.get('x-user')
+    const member = username ? await getTeamMemberByUsername(username) : null
+    // Unlinked non-manager → no reports they can see.
+    if (!member?.full_name) return NextResponse.json([])
+    ownName = member.full_name
+  }
+
   const sb = getSupabase()
   let query = sb
     .from('weekly_reports')
     .select('id, submitted_by, week_label, blockers, escalations, priorities, goals_met, win, accomplishments, friction, went_well, support_needed, whats_new, ai_analysis, created_at')
     .order('created_at', { ascending: false })
     .limit(100)
+
+  if (ownName) query = query.eq('submitted_by', ownName)
 
   if (weekStart) {
     const from = new Date(weekStart)

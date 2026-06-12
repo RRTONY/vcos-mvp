@@ -92,6 +92,9 @@
   .alert-blue {
     @apply bg-accent-light text-accent border border-accent/20;
   }
+  .alert-green {
+    @apply bg-success-light text-success border border-success/20;
+  }
 
   /* ── Form ───────────────────────────────── */
   .field-input {

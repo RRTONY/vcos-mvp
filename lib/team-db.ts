@@ -44,3 +44,14 @@ export function invalidateTeamCache() {
   _cache = null
   _cacheTime = 0
 }
+
+/**
+ * Map an auth username (e.g. "darryl") to its team-member row.
+ * Used to bridge auth identity ↔ weekly_reports.submitted_by (full name).
+ */
+export async function getTeamMemberByUsername(username: string): Promise<TeamMemberRow | null> {
+  if (!username) return null
+  const all = await getTeamMembers(false)
+  const uname = username.toLowerCase()
+  return all.find(m => (m.vcos_username ?? '').toLowerCase() === uname) ?? null
+}

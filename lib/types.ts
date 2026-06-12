@@ -65,4 +65,8 @@ export interface Meeting {
 export interface Me {
   username: string
   role: 'owner' | 'admin' | 'user'
+  /** Team-member full name this user maps to (weekly_reports.submitted_by), if any. */
+  fullName: string | null
+  /** Whether this user is expected to file a weekly report. */
+  filesReport: boolean
 }

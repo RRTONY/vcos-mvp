@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, Suspense } from 'react'
-import { useSearchParams, useRouter } from 'next/navigation'
+import { useSearchParams } from 'next/navigation'
 import { RAMPRATE_LOGO_B64 } from '@/lib/logo'
 
 function LoginForm() {
@@ -10,7 +10,6 @@ function LoginForm() {
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
   const searchParams = useSearchParams()
-  const router = useRouter()
   const from = searchParams.get('from') ?? '/'
 
   async function handleSubmit(e: React.FormEvent) {
@@ -24,8 +23,11 @@ function LoginForm() {
         body: JSON.stringify({ username, password }),
       })
       if (res.ok) {
-        router.push(from)
-        router.refresh()
+        // Hard navigation (not router.push) so the browser does a full reload
+        // that carries the freshly-set session cookie through middleware.
+        // A soft navigation can be served from cache before the cookie is
+        // readable, leaving the user stuck on the login page.
+        window.location.assign(from)
       } else {
         const d = await res.json()
         setError(d.error ?? 'Invalid credentials')

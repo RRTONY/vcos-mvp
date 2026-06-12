@@ -2,6 +2,9 @@
 
 import { useState, useRef, useEffect } from 'react'
 import { useToast } from '@/components/Toast'
+import { useMe } from '@/hooks/useMe'
+import { FiCheck } from 'react-icons/fi'
+import Spinner from '@/components/Spinner'
 
 interface AiAnalysis {
   summary: string
@@ -112,27 +115,34 @@ const SECTIONS = [
 
 export default function SubmitPage() {
   const { toast } = useToast()
+  const { me, isAdmin } = useMe()
   const [submitting, setSubmitting] = useState(false)
   const [analysis, setAnalysis] = useState<AiAnalysis | null>(null)
   const [submittedName, setSubmittedName] = useState('')
   const [teamNames, setTeamNames] = useState<string[]>([])
   const formRef = useRef<HTMLFormElement>(null)
 
+  // Managers can submit on behalf of anyone; everyone else is locked to themselves.
+  const lockedName = !isAdmin ? (me?.fullName ?? null) : null
+
   useEffect(() => {
+    if (!isAdmin) return // non-admins don't need the full roster
     fetch('/api/team', { cache: 'no-store' })
       .then(r => r.json())
       .then((data: Array<{ full_name: string; active: boolean }>) =>
         setTeamNames((data ?? []).filter(m => m.active).map(m => m.full_name))
       )
       .catch(() => {})
-  }, [])
+  }, [isAdmin])
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault()
     const form = e.currentTarget
     const fd = new FormData(form)
-    const name = fd.get('name') as string
-    if (!name) { toast('Please select your name first'); return }
+    // Non-admins submit as themselves regardless of the form field (also enforced server-side).
+    const name = (lockedName ?? (fd.get('name') as string))
+    if (!name) { toast(isAdmin ? 'Please select a name first' : 'Your account is not linked to a team member — contact an admin'); return }
+    fd.set('name', name)
 
     const payload: Record<string, string> = {}
     for (const [k, v] of fd.entries()) {
@@ -166,8 +176,9 @@ export default function SubmitPage() {
   if (analysis || submittedName) {
     return (
       <div className="space-y-4">
-        <div className="bg-green-950 border border-green-700 text-green-300 p-4 text-sm font-medium">
-          ✓ Report submitted for <span className="font-bold">{submittedName}</span> — posted to #weeklyreports
+        <div className="alert alert-green">
+          <FiCheck className="w-4 h-4 shrink-0 mt-0.5" />
+          <span>Report submitted for <span className="font-bold">{submittedName}</span> — posted to #weeklyreports</span>
         </div>
 
         {analysis && (
@@ -199,7 +210,7 @@ export default function SubmitPage() {
                   <ul className="space-y-1">
                     {analysis.actions.map((act, i) => (
                       <li key={i} className="text-sm text-ink2 flex gap-2">
-                        <span className="text-amber-400 shrink-0">→</span>
+                        <span className="text-warning shrink-0">→</span>
                         <span>{act}</span>
                       </li>
                     ))}
@@ -223,22 +234,30 @@ export default function SubmitPage() {
   return (
     <form ref={formRef} onSubmit={handleSubmit} className="space-y-4">
       <div className="slbl mt-6">Weekly Report</div>
-      <div className="alert alert-amber">
-        Use this form to submit your weekly report. It will be stored in VCOS and posted to #weeklyreports automatically.
-      </div>
 
       <div className="card">
         <div className="card-hd"><div className="card-ti">Your Information</div></div>
         <div className="card-body space-y-4">
           <div>
-            <label className="text-xs font-bold uppercase tracking-widest text-ink3 block mb-1">Your Name <span className="text-red-400">*</span></label>
-            <select name="name" className="field-input" required>
-              <option value="">— Select —</option>
-              {teamNames.map((n) => <option key={n} value={n}>{n}</option>)}
-            </select>
+            <label className="text-xs font-bold uppercase tracking-widest text-ink3 block mb-1">Your Name <span className="text-danger">*</span></label>
+            {isAdmin ? (
+              <select name="name" className="field-input" required>
+                <option value="">— Select —</option>
+                {teamNames.map((n) => <option key={n} value={n}>{n}</option>)}
+              </select>
+            ) : lockedName ? (
+              <div className="field-input bg-sand2 flex items-center justify-between">
+                <span className="font-semibold">{lockedName}</span>
+                <span className="text-[10px] font-bold uppercase tracking-widest text-ink4">You</span>
+              </div>
+            ) : (
+              <div className="text-sm text-danger">
+                Your account isn’t linked to a team member, so you can’t submit a report. Please contact an admin.
+              </div>
+            )}
           </div>
           <div>
-            <label className="text-xs font-bold uppercase tracking-widest text-ink3 block mb-1">Report Week <span className="text-red-400">*</span></label>
+            <label className="text-xs font-bold uppercase tracking-widest text-ink3 block mb-1">Report Week <span className="text-danger">*</span></label>
             <input
               name="week"
               className="field-input"
@@ -272,10 +291,10 @@ export default function SubmitPage() {
 
       <button
         type="submit"
-        disabled={submitting}
+        disabled={submitting || (!isAdmin && !lockedName)}
         className="btn-primary w-full sm:w-auto disabled:opacity-50"
       >
-        {submitting ? 'Submitting…' : 'Submit Weekly Report'}
+        {submitting ? <Spinner label="Submitting…" /> : 'Submit Weekly Report'}
       </button>
     </form>
   )

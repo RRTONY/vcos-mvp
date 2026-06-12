@@ -10,6 +10,9 @@ import { useMe } from '@/hooks/useMe'
 import { CLICKUP_WORKSPACE_URL } from '@/lib/constants'
 import StaleBadge from '@/components/StaleBadge'
 import MeetingTimeline from '@/components/MeetingTimeline'
+import WeekCalendar from '@/components/WeekCalendar'
+import { FiCheck, FiAlertTriangle } from 'react-icons/fi'
+import Spinner from '@/components/Spinner'
 import dynamic from 'next/dynamic'
 const HoursBar = dynamic(() => import('@/components/charts/HoursBar'), { ssr: false })
 const OkrRings = dynamic(() => import('@/components/charts/OkrRing'), { ssr: false })
@@ -99,7 +102,7 @@ function MemberRollup({ name, stats, tasks, didFile, flow, loading }: {
                 </a>
               ))}
               {tasks.length > 20 && (
-                <a href="{`${CLICKUP_WORKSPACE_URL}/home`}" target="_blank" rel="noopener noreferrer"
+                <a href={`${CLICKUP_WORKSPACE_URL}/home`} target="_blank" rel="noopener noreferrer"
                   className="block text-xs text-ink4 hover:underline py-2">
                   +{tasks.length - 20} more in ClickUp ↗
                 </a>
@@ -473,6 +476,9 @@ export default function ReportsPage() {
         const weekFriday = new Date(weekMon)
         weekFriday.setDate(weekMon.getDate() + 4)
         weekFriday.setHours(23, 59, 59, 999)
+        const myName = me?.fullName ?? null
+        // The API already restricts non-managers to their own reports; the UI
+        // mirrors that by hiding the team roster/filter for them.
 
         const filtered = weekReports.filter(r =>
           !filterMember || r.submitted_by === filterMember
@@ -513,15 +519,42 @@ export default function ReportsPage() {
                   Current week
                 </button>
               )}
-              <div className="flex gap-3 text-xs text-ink4 ml-auto">
-                {onTimeCount > 0 && <span className="text-green-700 font-semibold">{onTimeCount} on time</span>}
-                {lateCount > 0   && <span className="text-amber-600 font-semibold">{lateCount} late</span>}
-                {missingCount > 0 && <span className="text-red-600 font-semibold">{missingCount} missing</span>}
-              </div>
+              <WeekCalendar selectedMonday={weekMon} onSelectWeek={setWeekMon} />
+              {isAdmin && (
+                <div className="flex gap-3 text-xs text-ink4 ml-auto">
+                  {onTimeCount > 0 && <span className="text-green-700 font-semibold">{onTimeCount} on time</span>}
+                  {lateCount > 0   && <span className="text-amber-600 font-semibold">{lateCount} late</span>}
+                  {missingCount > 0 && <span className="text-red-600 font-semibold">{missingCount} missing</span>}
+                </div>
+              )}
             </div>
 
-            {/* Member status chips */}
-            <div className="card">
+            {/* Personal status (non-managers) */}
+            {!isAdmin && myName && (() => {
+              const mine = weekReports.find(r => r.submitted_by === myName)
+              if (mine) {
+                const onTime = new Date(mine.created_at) <= weekFriday
+                const when = new Date(mine.created_at).toLocaleString('en-US', { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })
+                return (
+                  <div className="alert alert-green">
+                    <FiCheck className="w-4 h-4 shrink-0 mt-0.5" />
+                    <span>You filed your report for {fmtWeekLabel(weekMon)}{onTime ? '' : ' (late)'} — submitted {when}.</span>
+                  </div>
+                )
+              }
+              return (
+                <div className="alert alert-amber items-center justify-between">
+                  <span className="flex items-center gap-2">
+                    <FiAlertTriangle className="w-4 h-4 shrink-0" />
+                    You haven’t filed your report for {fmtWeekLabel(weekMon)} yet.
+                  </span>
+                  {isCurrentWeek && <a href="/submit" className="btn-primary text-xs py-1 px-3 whitespace-nowrap">Submit now</a>}
+                </div>
+              )
+            })()}
+
+            {/* Member status chips (managers only) */}
+            {isAdmin && <div className="card">
               <div className="card-hd">
                 <div className="card-ti">
                   {isCurrentWeek ? 'This Week' : fmtWeekLabel(weekMon)}
@@ -562,10 +595,10 @@ export default function ReportsPage() {
                   </p>
                 )}
               </div>
-            </div>
+            </div>}
 
-            {/* Member filter + count */}
-            {weekReports.length > 0 && (
+            {/* Member filter + count (managers only) */}
+            {isAdmin && weekReports.length > 0 && (
               <div className="flex flex-wrap gap-2 items-center">
                 <select
                   value={filterMember}
@@ -586,18 +619,20 @@ export default function ReportsPage() {
 
             {/* Report cards */}
             {weekReportsLoading ? (
-              <div className="text-ink4 text-sm animate-pulse py-4">Loading reports…</div>
+              <div className="py-4"><Spinner label="Loading reports…" className="text-ink4 text-sm" /></div>
             ) : sorted.length === 0 ? (
-              <div className="card p-6 text-center text-ink4 text-sm">
-                {filterMember
-                  ? `${filterMember} has not submitted a report for this week.`
-                  : `No reports submitted for the week of ${fmtWeekLabel(weekMon)}.`
-                }
-              </div>
+              isAdmin ? (
+                <div className="card p-6 text-center text-ink4 text-sm">
+                  {filterMember
+                    ? `${filterMember} has not submitted a report for this week.`
+                    : `No reports submitted for the week of ${fmtWeekLabel(weekMon)}.`
+                  }
+                </div>
+              ) : null
             ) : (
               <div className="space-y-2">
                 {sorted.map(r => (
-                  <WeeklyReportCard key={r.id} r={r} friday={weekFriday} isMine={me?.username === r.submitted_by} />
+                  <WeeklyReportCard key={r.id} r={r} friday={weekFriday} isMine={myName === r.submitted_by} />
                 ))}
               </div>
             )}
@@ -856,7 +891,7 @@ export default function ReportsPage() {
         <div className="flex flex-wrap gap-2 pb-8">
           <ShareSlackButton label="Post Full Report to Slack" message={fullReportMsg} />
           <a
-            href="{`${CLICKUP_WORKSPACE_URL}/home`}"
+            href={`${CLICKUP_WORKSPACE_URL}/home`}
             target="_blank"
             rel="noopener noreferrer"
             className="inline-flex items-center gap-1.5 border border-sand3 px-3 py-1.5 text-xs font-bold hover:bg-sand2 transition-colors"

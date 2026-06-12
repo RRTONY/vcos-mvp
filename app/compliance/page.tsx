@@ -28,6 +28,20 @@ function getScorecardRange(): { label: string; weeksLabel: string } {
   }
 }
 
+function mostRecentMonday(from: Date): Date {
+  const d = new Date(from)
+  d.setDate(d.getDate() - ((d.getDay() + 6) % 7))
+  d.setHours(0, 0, 0, 0)
+  return d
+}
+
+function fmtWeek(mon: Date): string {
+  const fri = new Date(mon)
+  fri.setDate(mon.getDate() + 4)
+  const fmt = (d: Date) => d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+  return `${fmt(mon)}–${fmt(fri)}`
+}
+
 const BT_ITEMS: { key: keyof CheckState; label: string }[] = [
   { key: 'invoiceSubmitted',    label: 'Braintrust invoice submitted this period?' },
   { key: 'webworkConfirmed',    label: 'WebWork screenshots cover full work period?' },
@@ -49,7 +63,7 @@ interface Member {
 
 
 export default function CompliancePage() {
-  const { isAdmin, isOwner } = useMe()
+  const { isAdmin, isOwner, me } = useMe()
   const [team, setTeam] = useState<Member[]>([])
   const [week1Label, setWeek1Label] = useState('Week 1')
   const [week2Label, setWeek2Label] = useState('Week 2')
@@ -81,26 +95,31 @@ export default function CompliancePage() {
     setChecks((prev) => ({ ...prev, [key]: !prev[key] }))
   }
 
+  // Filing status comes from the authoritative weekly_reports table (the submit
+  // form writes there) — NOT the Slack channel scan, which was unreliable.
   useEffect(() => {
-    fetch('/api/slack-stats', { cache: 'no-store' })
-      .then((r) => r.json())
-      .then((d) => {
-        if (!d.weeklyReports) return
-        const filed: string[] = d.weeklyReports.filed ?? []
-        const filedWeek1: string[] = d.weeklyReports.filedWeek1 ?? []
-        const filedWeek2: string[] = d.weeklyReports.filedWeek2 ?? []
-        if (d.weeklyReports.week1Label) setWeek1Label(d.weeklyReports.week1Label)
-        if (d.weeklyReports.week2Label) setWeek2Label(d.weeklyReports.week2Label)
-        setTeam((prev) =>
-          prev.map((m) => ({
-            ...m,
-            filed: filed.includes(m.name),
-            filedWeek1: filedWeek1.includes(m.name),
-            filedWeek2: filedWeek2.includes(m.name),
-          }))
-        )
-      })
-      .catch(() => {})
+    const curMon = mostRecentMonday(new Date())
+    const prevMon = new Date(curMon)
+    prevMon.setDate(curMon.getDate() - 7)
+    setWeek1Label(fmtWeek(prevMon))
+    setWeek2Label(fmtWeek(curMon))
+    const w1 = prevMon.toISOString().slice(0, 10)
+    const w2 = curMon.toISOString().slice(0, 10)
+    Promise.all([
+      fetch(`/api/weekly-reports?week_start=${w1}`, { cache: 'no-store' }).then((r) => r.json()).catch(() => []),
+      fetch(`/api/weekly-reports?week_start=${w2}`, { cache: 'no-store' }).then((r) => r.json()).catch(() => []),
+    ]).then(([d1, d2]: [{ submitted_by: string }[], { submitted_by: string }[]]) => {
+      const names1 = new Set((Array.isArray(d1) ? d1 : []).map((r) => r.submitted_by))
+      const names2 = new Set((Array.isArray(d2) ? d2 : []).map((r) => r.submitted_by))
+      setTeam((prev) =>
+        prev.map((m) => ({
+          ...m,
+          filedWeek1: names1.has(m.name),
+          filedWeek2: names2.has(m.name),
+          filed: names2.has(m.name),
+        }))
+      )
+    }).catch(() => {})
   }, [refreshKey])
 
   useEffect(() => {
@@ -121,7 +140,10 @@ export default function CompliancePage() {
       .catch(() => {})
   }, [refreshKey])
 
-  const missing = team.filter((m) => m.filesReport && !m.filed)
+  // Normal users only see their own row (consistent with report visibility rules);
+  // managers see the full team.
+  const visibleTeam = isAdmin ? team : team.filter((m) => me?.fullName && m.name === me.fullName)
+  const missing = visibleTeam.filter((m) => m.filesReport && !m.filed)
   const { label: scorecardRange, weeksLabel } = getScorecardRange()
 
   return (
@@ -146,7 +168,7 @@ export default function CompliancePage() {
               </tr>
             </thead>
             <tbody>
-              {team.map((m) => {
+              {visibleTeam.map((m) => {
                 const rateColor = m.rate >= 90 ? 'text-ink' : m.rate >= 70 ? 'text-ink3' : 'text-ink4'
                 return (
                   <tr key={m.name} className="border-b border-sand3 last:border-0">
@@ -219,7 +241,7 @@ export default function CompliancePage() {
               </div>
             ))
           )}
-          {missing.length > 0 && (
+          {missing.length > 0 && isAdmin && (
             <div className="mt-3">
               <ShareSlackButton
                 label="Alert Missing Members in Slack"

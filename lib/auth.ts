@@ -8,24 +8,40 @@ function getSecret(): string {
   return process.env.AUTH_SECRET ?? 'vcos-fallback-secret-change-me'
 }
 
-function toBase64url(buf: ArrayBuffer): string {
-  return btoa(String.fromCharCode(...new Uint8Array(buf)))
-    .replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '')
+function toBase64url(input: Uint8Array | ArrayBuffer): string {
+  // IMPORTANT: respect the view's byteOffset/byteLength. In the Edge runtime
+  // TextEncoder().encode() can return a Uint8Array backed by a larger pooled
+  // ArrayBuffer, so `new Uint8Array(someView.buffer)` would read trailing
+  // garbage. Always operate on the exact bytes of the view.
+  const bytes = input instanceof Uint8Array ? input : new Uint8Array(input)
+  let bin = ''
+  for (let i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i])
+  return btoa(bin).replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '')
 }
 
-function fromBase64url(str: string): ArrayBuffer {
+function fromBase64url(str: string): Uint8Array {
   const b64 = str.replace(/-/g, '+').replace(/_/g, '/')
   const bin = atob(b64)
   const buf = new Uint8Array(bin.length)
   for (let i = 0; i < bin.length; i++) buf[i] = bin.charCodeAt(i)
-  return buf.buffer
+  return buf
+}
+
+// CRITICAL (Edge runtime): pass the Uint8Array *view* itself to subtle crypto —
+// never `view.buffer`, which on Edge can be a larger pooled ArrayBuffer with
+// trailing garbage, producing a different HMAC between sign and verify. The view
+// carries the correct byteOffset/byteLength so only the real bytes are hashed.
+// The `as BufferSource` cast is purely to satisfy the strict DOM lib typing
+// (Uint8Array<ArrayBufferLike> vs ArrayBufferView<ArrayBuffer>); it does not
+// change the runtime value.
+function bytes(str: string): BufferSource {
+  return new TextEncoder().encode(str) as unknown as BufferSource
 }
 
 async function getKey(secret: string): Promise<CryptoKey> {
-  const enc = new TextEncoder()
   return crypto.subtle.importKey(
     'raw',
-    enc.encode(secret),
+    bytes(secret),
     { name: 'HMAC', hash: 'SHA-256' },
     false,
     ['sign', 'verify']
@@ -34,10 +50,10 @@ async function getKey(secret: string): Promise<CryptoKey> {
 
 export async function createSession(username: string, role: string): Promise<string> {
   const payload = toBase64url(
-    new TextEncoder().encode(JSON.stringify({ u: username, r: role, e: Date.now() + DAYS_30 })).buffer as ArrayBuffer
+    new TextEncoder().encode(JSON.stringify({ u: username, r: role, e: Date.now() + DAYS_30 }))
   )
   const key = await getKey(getSecret())
-  const sig = await crypto.subtle.sign('HMAC', key, new TextEncoder().encode(payload).buffer as ArrayBuffer)
+  const sig = await crypto.subtle.sign('HMAC', key, bytes(payload))
   return `${payload}.${toBase64url(sig)}`
 }
 
@@ -50,8 +66,8 @@ export async function verifySession(token: string): Promise<{ username: string; 
     const key = await getKey(getSecret())
     const valid = await crypto.subtle.verify(
       'HMAC', key,
-      fromBase64url(sig),
-      new TextEncoder().encode(payload).buffer as ArrayBuffer
+      fromBase64url(sig) as unknown as BufferSource,
+      bytes(payload)
     )
     if (!valid) return null
     const { u, r, e } = JSON.parse(new TextDecoder().decode(fromBase64url(payload)))

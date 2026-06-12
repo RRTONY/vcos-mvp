@@ -7,6 +7,8 @@ import type { Task, ClickUpData, SlackData, WebWorkMember } from '@/lib/types'
 import StaleBadge from '@/components/StaleBadge'
 import { useMe } from '@/hooks/useMe'
 import { CLICKUP_WORKSPACE_URL, SLACK_WORKSPACE_URL, SLACK_CHANNEL_WEEKLY_REPORTS, OVERDUE_ALERT_THRESHOLD } from '@/lib/constants'
+import { FiCheck, FiX } from 'react-icons/fi'
+import Spinner from '@/components/Spinner'
 
 interface TeamMember { name: string; cuKey: string; role: string; filesReport: boolean }
 interface OKR { id: string; label: string; pct: number; note: string }
@@ -160,7 +162,7 @@ function MemberCard({
               {tasks.slice(0, 15).map((t) => <TaskRow key={t.id} t={t} />)}
               {tasks.length > 15 && (
                 <a
-                  href="{`${CLICKUP_WORKSPACE_URL}/home`}"
+                  href={`${CLICKUP_WORKSPACE_URL}/home`}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="block text-sm text-accent hover:underline py-3"
@@ -189,7 +191,7 @@ export default function DashboardPage() {
   const [savingOkr, setSavingOkr] = useState(false)
   const { refreshKey, freshClickUp } = useRefresh()
   const prevKey = useRef(refreshKey)
-  const { isOwner } = useMe()
+  const { isOwner, isAdmin, me } = useMe()
   const [selectedMonday, setSelectedMonday] = useState<Date>(() => getMostRecentMonday(new Date()))
   const [weeklyReports, setWeeklyReports] = useState<WeeklyReportEntry[]>([])
   const [reportsLoading, setReportsLoading] = useState(false)
@@ -280,32 +282,41 @@ export default function DashboardPage() {
   selectedFriday.setHours(23, 59, 59, 999)
   const selectedWeekLabel = fmtWeekLabel(selectedMonday)
 
-  function getMemberReportStatus(memberName: string): 'on-time' | 'late' | null {
+  function getMemberReportEntry(memberName: string): WeeklyReportEntry | null {
+    // Prefer an exact full-name match; fall back to first-name fuzzy match.
+    const exact = weeklyReports.find(r => r.submitted_by === memberName)
+    if (exact) return exact
     const first = memberName.split(' ')[0].toLowerCase()
-    const report = weeklyReports.find(r =>
+    return weeklyReports.find(r =>
       r.submitted_by.toLowerCase().includes(first) ||
       first.includes(r.submitted_by.toLowerCase().split(' ')[0])
-    )
+    ) ?? null
+  }
+
+  function getMemberReportStatus(memberName: string): 'on-time' | 'late' | null {
+    const report = getMemberReportEntry(memberName)
     if (!report) return null
     return new Date(report.created_at) <= selectedFriday ? 'on-time' : 'late'
   }
 
   const reportingMembers = team.filter(m => m.filesReport)
-  const pastFiledCount   = reportingMembers.filter(m => getMemberReportStatus(m.name) !== null).length
-  const pastMissingCount = reportingMembers.filter(m => getMemberReportStatus(m.name) === null).length
-  const displayFiled   = isCurrentWeek ? filed.length   : pastFiledCount
-  const displayMissing = isCurrentWeek ? missing.length : pastMissingCount
+  // Authoritative source = actual submissions in the weekly_reports table (the form
+  // writes there). Earlier this used Slack-channel scanning, which failed to match
+  // submissions and flagged everyone as missing.
+  const missingMembers   = reportingMembers.filter(m => getMemberReportEntry(m.name) === null)
+  const displayFiled   = reportingMembers.length - missingMembers.length
+  const displayMissing = missingMembers.length
   const displayTotal   = reportingMembers.length
 
   // Items needing CEO attention
   const actions: { level: 'red' | 'amber' | 'blue'; text: React.ReactNode }[] = []
   if (!loading) {
-    if (isCurrentWeek && missing.length > 0) actions.push({
+    if (isCurrentWeek && !reportsLoading && missingMembers.length > 0) actions.push({
       level: 'red',
       text: (
         <span className="flex items-center justify-between gap-2 w-full">
-          <span><strong>Reports missing:</strong> {missing.join(', ')} have not filed this week.</span>
-          <a href="{`${SLACK_WORKSPACE_URL}/${SLACK_CHANNEL_WEEKLY_REPORTS}`}" target="_blank" rel="noopener noreferrer" className="underline whitespace-nowrap text-xs">Slack channel ↗</a>
+          <span><strong>Reports missing:</strong> {missingMembers.map(m => m.name).join(', ')} have not filed this week.</span>
+          <a href={`${SLACK_WORKSPACE_URL}/${SLACK_CHANNEL_WEEKLY_REPORTS}`} target="_blank" rel="noopener noreferrer" className="underline whitespace-nowrap text-xs">Slack channel ↗</a>
         </span>
       ),
     })
@@ -314,7 +325,7 @@ export default function DashboardPage() {
       text: (
         <span className="flex items-center justify-between gap-2 w-full">
           <span><strong>{clickup?.urgent} urgent tasks</strong> across the team need immediate resolution.</span>
-          <a href="{`${CLICKUP_WORKSPACE_URL}/home`}" target="_blank" rel="noopener noreferrer" className="underline whitespace-nowrap text-xs">ClickUp ↗</a>
+          <a href={`${CLICKUP_WORKSPACE_URL}/home`} target="_blank" rel="noopener noreferrer" className="underline whitespace-nowrap text-xs">ClickUp ↗</a>
         </span>
       ),
     })
@@ -323,7 +334,7 @@ export default function DashboardPage() {
       text: (
         <span className="flex items-center justify-between gap-2 w-full">
           <span><strong>CRM overdue at {clickup?.overduePercent}%</strong> — {clickup?.overdue} of {clickup?.totalTasks} tasks past due. Needs triage.</span>
-          <a href="{`${CLICKUP_WORKSPACE_URL}/home`}" target="_blank" rel="noopener noreferrer" className="underline whitespace-nowrap text-xs">ClickUp ↗</a>
+          <a href={`${CLICKUP_WORKSPACE_URL}/home`} target="_blank" rel="noopener noreferrer" className="underline whitespace-nowrap text-xs">ClickUp ↗</a>
         </span>
       ),
     })
@@ -495,10 +506,10 @@ export default function DashboardPage() {
               member={member}
               stats={findStats(clickup?.assigneeStats, member.cuKey)}
               tasks={findTasks(clickup?.tasksByAssignee, member.cuKey)}
-              filed={isCurrentWeek ? filed.some((f) => f.toLowerCase().includes(member.cuKey)) : false}
+              filed={getMemberReportEntry(member.name) !== null}
               loading={loading}
               sparkline={wwMember?.byDay}
-              reportStatus={getMemberReportStatus(member.name) ?? undefined}
+              reportStatus={member.filesReport ? getMemberReportStatus(member.name) : undefined}
             />
           )
         })}
@@ -602,6 +613,51 @@ export default function DashboardPage() {
           </div>
         )}
       </div>
+
+      {/* Weekly report submissions — who sent / who hasn't (managers see everyone) */}
+      {isAdmin && (
+        <div className="mb-6">
+          <div className="flex items-center justify-between mb-1">
+            <div className="slbl mb-0">Weekly Report Submissions — {selectedWeekLabel}</div>
+            <span className="text-xs text-ink4">
+              {reportsLoading ? 'Loading…' : `${reportingMembers.filter(m => getMemberReportEntry(m.name)).length} of ${reportingMembers.length} submitted`}
+            </span>
+          </div>
+          <div className="card divide-y divide-sand3">
+            {reportsLoading ? (
+              <div className="px-5 py-3"><Spinner label="Loading submissions…" className="text-ink4 text-sm" /></div>
+            ) : reportingMembers.length === 0 ? (
+              <div className="px-4 py-3 text-sm text-ink4">No reporting members configured.</div>
+            ) : (
+              <>
+                {/* Submitted — with date & time */}
+                {reportingMembers.map(m => {
+                  const rep = getMemberReportEntry(m.name)
+                  if (!rep) return null
+                  const onTime = new Date(rep.created_at) <= selectedFriday
+                  const when = new Date(rep.created_at).toLocaleString('en-US', { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })
+                  return (
+                    <div key={m.name} className="flex items-center gap-3 px-5 py-3">
+                      <span className="w-6 h-6 rounded-full bg-success-light text-success flex items-center justify-center flex-shrink-0"><FiCheck className="w-3.5 h-3.5" /></span>
+                      <span className="text-sm font-semibold flex-1 min-w-0 truncate">{m.name}</span>
+                      <span className={onTime ? 'badge-green' : 'badge-amber'}>{onTime ? 'On time' : 'Late'}</span>
+                      <span className="text-xs text-ink4 whitespace-nowrap">{when}</span>
+                    </div>
+                  )
+                })}
+                {/* Not submitted */}
+                {reportingMembers.filter(m => !getMemberReportEntry(m.name)).map(m => (
+                  <div key={m.name} className="flex items-center gap-3 px-5 py-3">
+                    <span className="w-6 h-6 rounded-full bg-danger-light text-danger flex items-center justify-center flex-shrink-0"><FiX className="w-3.5 h-3.5" /></span>
+                    <span className="text-sm font-semibold flex-1 min-w-0 truncate text-ink3">{m.name}</span>
+                    <span className="badge-red">Not submitted</span>
+                  </div>
+                ))}
+              </>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   )
 }
