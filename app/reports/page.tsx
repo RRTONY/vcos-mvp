@@ -13,6 +13,7 @@ import MeetingTimeline from '@/components/MeetingTimeline'
 import WeekCalendar from '@/components/WeekCalendar'
 import { FiCheck, FiAlertTriangle } from 'react-icons/fi'
 import Spinner from '@/components/Spinner'
+import { classifySubmission, SUBMIT_STATUS_META, type SubmitStatus } from '@/lib/report-status'
 import dynamic from 'next/dynamic'
 const HoursBar = dynamic(() => import('@/components/charts/HoursBar'), { ssr: false })
 const OkrRings = dynamic(() => import('@/components/charts/OkrRing'), { ssr: false })
@@ -218,14 +219,15 @@ function ReportField({ label, value }: { label: string; value: string | null }) 
   )
 }
 
-function WeeklyReportCard({ r, friday, isMine }: { r: WeeklyReportFull; friday: Date; isMine: boolean }) {
+function WeeklyReportCard({ r, weekMonday, isMine }: { r: WeeklyReportFull; weekMonday: Date; isMine: boolean }) {
   const [open, setOpen] = useState(false)
   const submittedAt = new Date(r.created_at)
-  const onTime = submittedAt <= friday
+  const status = classifySubmission(r.created_at, weekMonday)
+  const meta = SUBMIT_STATUS_META[status]
   const dateStr = submittedAt.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })
 
   return (
-    <div className={`border ${isMine ? 'border-accent/50' : onTime ? 'border-sand3' : 'border-amber-300'}`}>
+    <div className={`border ${isMine ? 'border-accent/50' : status === 'on-time' ? 'border-sand3' : meta.border}`}>
       <button
         onClick={() => setOpen(v => !v)}
         className="w-full flex items-center gap-3 px-4 py-3 text-left hover:bg-sand3/40 transition-colors"
@@ -236,10 +238,7 @@ function WeeklyReportCard({ r, friday, isMine }: { r: WeeklyReportFull; friday: 
         <div className="flex-1 min-w-0">
           <span className="text-sm font-bold">{r.submitted_by}</span>
           {isMine && <span className="text-[10px] font-bold text-accent ml-2">YOU</span>}
-          {onTime
-            ? <span className="text-[10px] font-bold text-green-700 ml-2">On time</span>
-            : <span className="text-[10px] font-bold text-amber-600 ml-2">Late</span>
-          }
+          <span className={`text-[10px] font-bold ml-2 ${meta.text}`} title={meta.long}>{meta.label}</span>
         </div>
         {r.win && (
           <span className="text-xs text-ink3 truncate hidden sm:block max-w-xs italic">"{r.win}"</span>
@@ -473,9 +472,6 @@ export default function ReportsPage() {
       {tab === 'submitted' && (() => {
         const currentMonday = getMostRecentMonday(new Date())
         const isCurrentWeek = weekMon.getTime() === currentMonday.getTime()
-        const weekFriday = new Date(weekMon)
-        weekFriday.setDate(weekMon.getDate() + 4)
-        weekFriday.setHours(23, 59, 59, 999)
         const myName = me?.fullName ?? null
         // The API already restricts non-managers to their own reports; the UI
         // mirrors that by hiding the team roster/filter for them.
@@ -483,16 +479,15 @@ export default function ReportsPage() {
         const filtered = weekReports.filter(r =>
           !filterMember || r.submitted_by === filterMember
         )
-        // On-time first, then late
-        const sorted = [...filtered].sort((a, b) => {
-          const aOnTime = new Date(a.created_at) <= weekFriday ? 0 : 1
-          const bOnTime = new Date(b.created_at) <= weekFriday ? 0 : 1
-          return aOnTime - bOnTime
-        })
+        const statusOf = (r: WeeklyReportFull): SubmitStatus => classifySubmission(r.created_at, weekMon)
+        // On-time → weekend → late
+        const orderRank: Record<SubmitStatus, number> = { 'on-time': 0, weekend: 1, late: 2 }
+        const sorted = [...filtered].sort((a, b) => orderRank[statusOf(a)] - orderRank[statusOf(b)])
 
         const submittedNames = new Set(weekReports.map(r => r.submitted_by))
-        const onTimeCount = weekReports.filter(r => new Date(r.created_at) <= weekFriday).length
-        const lateCount   = weekReports.length - onTimeCount
+        const onTimeCount  = weekReports.filter(r => statusOf(r) === 'on-time').length
+        const weekendCount = weekReports.filter(r => statusOf(r) === 'weekend').length
+        const lateCount    = weekReports.filter(r => statusOf(r) === 'late').length
         const missingCount = reportMembers.filter(n => !submittedNames.has(n)).length
 
         return (
@@ -522,9 +517,10 @@ export default function ReportsPage() {
               <WeekCalendar selectedMonday={weekMon} onSelectWeek={setWeekMon} />
               {isAdmin && (
                 <div className="flex gap-3 text-xs text-ink4 ml-auto">
-                  {onTimeCount > 0 && <span className="text-green-700 font-semibold">{onTimeCount} on time</span>}
-                  {lateCount > 0   && <span className="text-amber-600 font-semibold">{lateCount} late</span>}
-                  {missingCount > 0 && <span className="text-red-600 font-semibold">{missingCount} missing</span>}
+                  {onTimeCount > 0  && <span className="text-success font-semibold">{onTimeCount} on time</span>}
+                  {weekendCount > 0 && <span className="text-warning font-semibold">{weekendCount} weekend</span>}
+                  {lateCount > 0    && <span className="text-danger font-semibold">{lateCount} late</span>}
+                  {missingCount > 0 && <span className="text-ink4 font-semibold">{missingCount} missing</span>}
                 </div>
               )}
             </div>
@@ -533,12 +529,13 @@ export default function ReportsPage() {
             {!isAdmin && myName && (() => {
               const mine = weekReports.find(r => r.submitted_by === myName)
               if (mine) {
-                const onTime = new Date(mine.created_at) <= weekFriday
+                const st = classifySubmission(mine.created_at, weekMon)
+                const alertClass = st === 'on-time' ? 'alert-green' : st === 'weekend' ? 'alert-amber' : 'alert-red'
                 const when = new Date(mine.created_at).toLocaleString('en-US', { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })
                 return (
-                  <div className="alert alert-green">
+                  <div className={`alert ${alertClass}`}>
                     <FiCheck className="w-4 h-4 shrink-0 mt-0.5" />
-                    <span>You filed your report for {fmtWeekLabel(weekMon)}{onTime ? '' : ' (late)'} — submitted {when}.</span>
+                    <span>You filed your report for {fmtWeekLabel(weekMon)} — submitted {when}{st !== 'on-time' ? ` (${SUBMIT_STATUS_META[st].label.toLowerCase()})` : ''}.</span>
                   </div>
                 )
               }
@@ -567,23 +564,22 @@ export default function ReportsPage() {
                 <div className="flex flex-wrap gap-2">
                   {reportMembers.map(name => {
                     const report = weekReports.find(r => r.submitted_by === name)
-                    const onTime = report ? new Date(report.created_at) <= weekFriday : null
+                    const st = report ? classifySubmission(report.created_at, weekMon) : null
+                    const chipClass =
+                      filterMember === name ? 'border-ink bg-ink text-white'
+                      : st === null      ? 'border-sand3 text-ink4 bg-sand2 hover:border-ink3'
+                      : st === 'on-time' ? 'border-success/50 text-success bg-success-light hover:opacity-80'
+                      : st === 'weekend' ? 'border-warning/50 text-warning bg-warning-light hover:opacity-80'
+                      :                    'border-danger/50 text-danger bg-danger-light hover:opacity-80'
+                    const icon = st === null ? '✗' : st === 'on-time' ? '✓' : st === 'weekend' ? '~' : '!'
                     return (
                       <button
                         key={name}
                         onClick={() => setFilterMember(filterMember === name ? '' : name)}
-                        className={`flex items-center gap-1.5 px-2.5 py-1 text-xs font-semibold border transition-colors ${
-                          filterMember === name
-                            ? 'border-ink bg-ink text-white'
-                            : report === undefined
-                            ? 'border-sand3 text-ink4 bg-sand2 hover:border-ink3'
-                            : onTime
-                            ? 'border-green-600 text-green-800 bg-green-50 hover:bg-green-100'
-                            : 'border-amber-400 text-amber-800 bg-amber-50 hover:bg-amber-100'
-                        }`}
-                        title={report ? (onTime ? 'Filed on time' : 'Filed late') : 'Not submitted'}
+                        className={`flex items-center gap-1.5 px-2.5 py-1 text-xs font-semibold border transition-colors ${chipClass}`}
+                        title={report ? SUBMIT_STATUS_META[st!].long : 'Not submitted'}
                       >
-                        <span>{report ? (onTime ? '✓' : '~') : '✗'}</span>
+                        <span>{icon}</span>
                         <span>{name.split(' ')[0]}</span>
                       </button>
                     )
@@ -632,7 +628,7 @@ export default function ReportsPage() {
             ) : (
               <div className="space-y-2">
                 {sorted.map(r => (
-                  <WeeklyReportCard key={r.id} r={r} friday={weekFriday} isMine={myName === r.submitted_by} />
+                  <WeeklyReportCard key={r.id} r={r} weekMonday={weekMon} isMine={myName === r.submitted_by} />
                 ))}
               </div>
             )}

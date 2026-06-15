@@ -25,6 +25,23 @@ function getCurrentWeekLabel(): string {
   return `${fmt(mon)}–${fmt(fri)}`
 }
 
+// Build a list of recent weeks (Mon–Fri labels) for the report-week dropdown.
+function getWeekOptions(count = 8): { value: string; label: string }[] {
+  const now = new Date()
+  const mon0 = new Date(now)
+  mon0.setDate(now.getDate() - ((now.getDay() + 6) % 7))
+  mon0.setHours(0, 0, 0, 0)
+  const fmt = (d: Date) => d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+  return Array.from({ length: count }, (_, i) => {
+    const mon = new Date(mon0)
+    mon.setDate(mon0.getDate() - i * 7)
+    const fri = new Date(mon)
+    fri.setDate(mon.getDate() + 4)
+    const label = `${fmt(mon)}–${fmt(fri)}`
+    return { value: label, label: i === 0 ? `${label} (this week)` : i === 1 ? `${label} (last week)` : label }
+  })
+}
+
 const SECTIONS = [
   {
     title: 'Flags & Blockers',
@@ -258,14 +275,16 @@ export default function SubmitPage() {
           </div>
           <div>
             <label className="text-xs font-bold uppercase tracking-widest text-ink3 block mb-1">Report Week <span className="text-danger">*</span></label>
-            <input
+            <select
               name="week"
               className="field-input"
-              type="text"
               defaultValue={getCurrentWeekLabel()}
-              placeholder="e.g. Apr 14–20, 2026"
               required
-            />
+            >
+              {getWeekOptions().map(w => (
+                <option key={w.value} value={w.value}>{w.label}</option>
+              ))}
+            </select>
           </div>
         </div>
       </div>

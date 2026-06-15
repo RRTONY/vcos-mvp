@@ -9,6 +9,7 @@ import { useMe } from '@/hooks/useMe'
 import { CLICKUP_WORKSPACE_URL, SLACK_WORKSPACE_URL, SLACK_CHANNEL_WEEKLY_REPORTS, OVERDUE_ALERT_THRESHOLD } from '@/lib/constants'
 import { FiCheck, FiX } from 'react-icons/fi'
 import Spinner from '@/components/Spinner'
+import { classifySubmission, SUBMIT_STATUS_META } from '@/lib/report-status'
 
 interface TeamMember { name: string; cuKey: string; role: string; filesReport: boolean }
 interface OKR { id: string; label: string; pct: number; note: string }
@@ -634,13 +635,13 @@ export default function DashboardPage() {
                 {reportingMembers.map(m => {
                   const rep = getMemberReportEntry(m.name)
                   if (!rep) return null
-                  const onTime = new Date(rep.created_at) <= selectedFriday
+                  const meta = SUBMIT_STATUS_META[classifySubmission(rep.created_at, selectedMonday)]
                   const when = new Date(rep.created_at).toLocaleString('en-US', { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })
                   return (
                     <div key={m.name} className="flex items-center gap-3 px-5 py-3">
-                      <span className="w-6 h-6 rounded-full bg-success-light text-success flex items-center justify-center flex-shrink-0"><FiCheck className="w-3.5 h-3.5" /></span>
+                      <span className={`w-6 h-6 rounded-full ${meta.dot} flex items-center justify-center flex-shrink-0`}><FiCheck className="w-3.5 h-3.5" /></span>
                       <span className="text-sm font-semibold flex-1 min-w-0 truncate">{m.name}</span>
-                      <span className={onTime ? 'badge-green' : 'badge-amber'}>{onTime ? 'On time' : 'Late'}</span>
+                      <span className={meta.badge} title={meta.long}>{meta.label}</span>
                       <span className="text-xs text-ink4 whitespace-nowrap">{when}</span>
                     </div>
                   )
