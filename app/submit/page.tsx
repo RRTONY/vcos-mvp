@@ -130,6 +130,8 @@ const SECTIONS = [
   },
 ]
 
+const DRAFT_KEY = 'vcos-weekly-report-draft'
+
 export default function SubmitPage() {
   const { toast } = useToast()
   const { me, isAdmin } = useMe()
@@ -137,6 +139,7 @@ export default function SubmitPage() {
   const [analysis, setAnalysis] = useState<AiAnalysis | null>(null)
   const [submittedName, setSubmittedName] = useState('')
   const [teamNames, setTeamNames] = useState<string[]>([])
+  const [draftRestored, setDraftRestored] = useState(false)
   const formRef = useRef<HTMLFormElement>(null)
 
   // Managers can submit on behalf of anyone; everyone else is locked to themselves.
@@ -151,6 +154,40 @@ export default function SubmitPage() {
       )
       .catch(() => {})
   }, [isAdmin])
+
+  // ── Auto-draft: persist answers to localStorage so a closed tab doesn't lose work ──
+  function saveDraft() {
+    if (!formRef.current) return
+    const fd = new FormData(formRef.current)
+    const obj: Record<string, string> = {}
+    for (const [k, v] of fd.entries()) if (typeof v === 'string' && v.trim()) obj[k] = v
+    try { localStorage.setItem(DRAFT_KEY, JSON.stringify(obj)) } catch { /* quota/private mode */ }
+  }
+  function clearDraft() {
+    try { localStorage.removeItem(DRAFT_KEY) } catch { /* ignore */ }
+  }
+  function discardDraft() {
+    clearDraft()
+    formRef.current?.reset()
+    setDraftRestored(false)
+  }
+
+  // Restore a saved draft on mount.
+  useEffect(() => {
+    if (!formRef.current) return
+    let saved: string | null = null
+    try { saved = localStorage.getItem(DRAFT_KEY) } catch { /* ignore */ }
+    if (!saved) return
+    try {
+      const data = JSON.parse(saved) as Record<string, string>
+      let restoredAny = false
+      for (const [k, v] of Object.entries(data)) {
+        const el = formRef.current.elements.namedItem(k) as HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement | null
+        if (el && 'value' in el) { el.value = v; restoredAny = true }
+      }
+      if (restoredAny) setDraftRestored(true)
+    } catch { /* corrupt draft */ }
+  }, [])
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault()
@@ -178,6 +215,8 @@ export default function SubmitPage() {
         setSubmittedName(name)
         setAnalysis(data.analysis ?? null)
         toast(`✓ Report submitted for ${name}`)
+        clearDraft()
+        setDraftRestored(false)
         formRef.current?.reset()
         window.scrollTo({ top: 0, behavior: 'smooth' })
       } else {
@@ -249,8 +288,14 @@ export default function SubmitPage() {
   }
 
   return (
-    <form ref={formRef} onSubmit={handleSubmit} className="space-y-4">
+    <form ref={formRef} onSubmit={handleSubmit} onInput={saveDraft} className="space-y-4">
       <div className="slbl mt-6">Weekly Report</div>
+      {draftRestored && (
+        <div className="alert alert-blue items-center justify-between">
+          <span>Draft restored — your unsaved answers were recovered.</span>
+          <button type="button" onClick={discardDraft} className="text-xs font-bold underline whitespace-nowrap">Start fresh</button>
+        </div>
+      )}
 
       <div className="card">
         <div className="card-hd"><div className="card-ti">Your Information</div></div>

@@ -2,6 +2,7 @@
 
 import { useState } from 'react'
 import type { Meeting } from '@/lib/types'
+import FormattedNotes from '@/components/FormattedNotes'
 
 const AVATAR_COLORS = ['#4F46E5','#7C3AED','#0891B2','#059669','#D97706','#DC2626']
 
@@ -86,13 +87,13 @@ function MeetingItem({ m, isLast }: { m: Meeting; isLast: boolean }) {
             {m.overview && (
               <div>
                 <div className="text-[10px] font-bold uppercase tracking-widest text-ink4 mb-1">Overview</div>
-                <p className="text-sm text-ink leading-relaxed">{m.overview}</p>
+                <FormattedNotes text={m.overview} className="text-sm text-ink2 leading-relaxed" />
               </div>
             )}
             {m.actionItems && (
               <div>
                 <div className="text-[10px] font-bold uppercase tracking-widest text-ink4 mb-1">Action Items</div>
-                <p className="text-sm text-ink leading-relaxed whitespace-pre-line">{m.actionItems}</p>
+                <FormattedNotes text={m.actionItems} className="text-sm text-ink2 leading-relaxed" />
               </div>
             )}
             {m.keywords.length > 0 && (

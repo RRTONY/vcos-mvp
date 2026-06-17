@@ -51,11 +51,31 @@ function groupBy<T>(arr: T[], key: (item: T) => string): Record<string, T[]> {
 
 // ─── Main Page ──────────────────────────────────────────────────────────────
 
+const ACK_KEY = 'vcos-openloops-acked'
+
 export default function OpenLoopsPage() {
   const [loops, setLoops] = useState<Loop[]>([])
-  const [dismissed, setDismissed] = useState<Set<string>>(new Set())
+  // Acknowledged loops: id → ISO timestamp. Persisted so the audit trail
+  // ("PM saw this critical item at 9am") survives reloads.
+  const [acked, setAcked] = useState<Record<string, string>>({})
   const [loading, setLoading] = useState(true)
   const { refreshKey } = useRefresh()
+
+  useEffect(() => {
+    try { const s = localStorage.getItem(ACK_KEY); if (s) setAcked(JSON.parse(s)) } catch { /* ignore */ }
+  }, [])
+
+  function persistAck(next: Record<string, string>) {
+    setAcked(next)
+    try { localStorage.setItem(ACK_KEY, JSON.stringify(next)) } catch { /* ignore */ }
+  }
+  function acknowledge(id: string) {
+    persistAck({ ...acked, [id]: new Date().toISOString() })
+  }
+  function unacknowledge(id: string) {
+    const next = { ...acked }; delete next[id]; persistAck(next)
+  }
+  const fmtAck = (iso: string) => new Date(iso).toLocaleString('en-US', { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })
 
   useEffect(() => {
     let cancelled = false
@@ -216,11 +236,8 @@ export default function OpenLoopsPage() {
     return () => { cancelled = true }
   }, [refreshKey])
 
-  function dismiss(id: string) {
-    setDismissed(prev => new Set([...prev, id]))
-  }
-
-  const open = loops.filter(l => !dismissed.has(l.id))
+  const open = loops.filter(l => !acked[l.id])
+  const acknowledgedLoops = loops.filter(l => acked[l.id])
   const byCategory = groupBy(open, l => l.category)
   const orderedCategories = [
     ...CATEGORY_ORDER.filter(c => byCategory[c]),
@@ -300,11 +317,11 @@ export default function OpenLoopsPage() {
                       </a>
                     )}
                     <button
-                      onClick={() => dismiss(loop.id)}
-                      className="border border-sand3 px-2 py-1 text-[10px] hover:bg-sand2 transition-colors text-ink4"
-                      title="Dismiss for this session"
+                      onClick={() => acknowledge(loop.id)}
+                      className="border border-sand3 px-2 py-1 text-[10px] font-bold hover:bg-sand2 transition-colors text-ink3 whitespace-nowrap"
+                      title="Acknowledge — mark as seen / in review (logged with a timestamp)"
                     >
-                      ✓
+                      ✓ Ack
                     </button>
                   </div>
                 </div>
@@ -314,14 +331,28 @@ export default function OpenLoopsPage() {
         </div>
       ))}
 
-      {/* Dismissed */}
-      {dismissed.size > 0 && (
-        <div className="mt-6">
-          <div className="text-xs text-ink4 mb-2">
-            {dismissed.size} dismissed this session —{' '}
-            <button onClick={() => setDismissed(new Set())} className="underline hover:text-ink">
-              restore all
-            </button>
+      {/* Acknowledged — audit trail */}
+      {acknowledgedLoops.length > 0 && (
+        <div className="mt-8">
+          <div className="text-xs font-bold uppercase tracking-widest text-ink3 mb-2">
+            Acknowledged ({acknowledgedLoops.length})
+          </div>
+          <div className="space-y-1.5">
+            {acknowledgedLoops.map(loop => (
+              <div key={loop.id} className="flex items-center gap-3 border border-sand3 bg-sand2/50 px-3 py-2 rounded">
+                <span className="text-success text-xs flex-shrink-0">✓</span>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm text-ink3 line-through truncate">{loop.text}</p>
+                  <p className="text-[10px] text-ink4">Acknowledged {fmtAck(acked[loop.id])}</p>
+                </div>
+                <button
+                  onClick={() => unacknowledge(loop.id)}
+                  className="text-[10px] text-ink4 underline hover:text-ink flex-shrink-0"
+                >
+                  Undo
+                </button>
+              </div>
+            ))}
           </div>
         </div>
       )}

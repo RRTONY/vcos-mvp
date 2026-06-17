@@ -10,6 +10,7 @@ import { CLICKUP_WORKSPACE_URL, SLACK_WORKSPACE_URL, SLACK_CHANNEL_WEEKLY_REPORT
 import { FiCheck, FiX } from 'react-icons/fi'
 import Spinner from '@/components/Spinner'
 import { classifySubmission, SUBMIT_STATUS_META } from '@/lib/report-status'
+import { isReportFrom } from '@/lib/report-match'
 
 interface TeamMember { name: string; cuKey: string; role: string; filesReport: boolean }
 interface OKR { id: string; label: string; pct: number; note: string }
@@ -284,14 +285,9 @@ export default function DashboardPage() {
   const selectedWeekLabel = fmtWeekLabel(selectedMonday)
 
   function getMemberReportEntry(memberName: string): WeeklyReportEntry | null {
-    // Prefer an exact full-name match; fall back to first-name fuzzy match.
-    const exact = weeklyReports.find(r => r.submitted_by === memberName)
-    if (exact) return exact
-    const first = memberName.split(' ')[0].toLowerCase()
-    return weeklyReports.find(r =>
-      r.submitted_by.toLowerCase().includes(first) ||
-      first.includes(r.submitted_by.toLowerCase().split(' ')[0])
-    ) ?? null
+    // Shared matcher (exact, then first-name fuzzy) — keeps the dashboard and the
+    // compliance scorecard in agreement about who filed.
+    return weeklyReports.find(r => isReportFrom(r.submitted_by, memberName)) ?? null
   }
 
   function getMemberReportStatus(memberName: string): 'on-time' | 'late' | null {
@@ -495,11 +491,15 @@ export default function DashboardPage() {
         ))
       )}
 
-      {/* Team Assignment Board */}
-      <div className="slbl mt-6">Team Assignment Board</div>
-      <p className="text-xs text-ink4 mb-3">Click any team member to see their assigned tasks from ClickUp.</p>
+      {/* Team Assignment Board — admins see everyone; others see only their own row */}
+      <div className="slbl mt-6">{isAdmin ? 'Team Assignment Board' : 'My Tasks'}</div>
+      <p className="text-xs text-ink4 mb-3">
+        {isAdmin
+          ? 'Click any team member to see their assigned tasks from ClickUp.'
+          : 'Your assigned tasks from ClickUp.'}
+      </p>
       <div className="space-y-2 mb-6">
-        {team.map((member) => {
+        {(isAdmin ? team : team.filter(m => me?.fullName && m.name === me.fullName)).map((member) => {
           const wwMember = webwork?.members?.find((m) => m.username === member.cuKey)
           return (
             <MemberCard

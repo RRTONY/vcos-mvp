@@ -98,21 +98,30 @@ export async function getTeamTasks(teamId: string) {
   const since = Date.now() - 180 * 24 * 60 * 60 * 1000
   const base = `${BASE}/team/${teamId}/task?subtasks=true&include_closed=false&date_updated_gt=${since}`
 
-  const allTasks: CUTask[] = []
-  let page = 0
+  // Fetch pages in concurrent batches instead of one-at-a-time. Sequential
+  // pagination of ~20+ pages took ~25s and timed out serverless functions
+  // (causing the dashboard to intermittently lose all ClickUp data). Batches of
+  // BATCH keep us well under ClickUp's rate limit while cutting wall-clock ~4-5x.
+  const BATCH = 12
+  const MAX_PAGES = 60 // safety cap: 6000 tasks
 
-  while (true) {
-    const res = await fetch(`${base}&page=${page}`, {
-      headers: headers(),
-      next: { revalidate: 0 },
-    })
+  async function fetchPage(page: number): Promise<{ tasks: CUTask[]; last: boolean }> {
+    const res = await fetch(`${base}&page=${page}`, { headers: headers(), next: { revalidate: 0 } })
     if (!res.ok) throw new Error(`ClickUp tasks ${res.status}`)
     const data = await res.json()
     const tasks: CUTask[] = data.tasks ?? []
-    allTasks.push(...tasks)
-    if (data.last_page === true || tasks.length === 0) break
-    page++
-    if (page > 20) break // safety cap: 2000 tasks max
+    return { tasks, last: data.last_page === true || tasks.length === 0 }
+  }
+
+  const allTasks: CUTask[] = []
+  let done = false
+  for (let start = 0; !done && start < MAX_PAGES; start += BATCH) {
+    const pages = Array.from({ length: BATCH }, (_, i) => start + i)
+    const results = await Promise.all(pages.map(fetchPage))
+    for (const r of results) {
+      allTasks.push(...r.tasks)
+      if (r.last) done = true
+    }
   }
 
   return { tasks: allTasks }

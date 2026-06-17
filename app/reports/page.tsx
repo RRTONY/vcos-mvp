@@ -571,7 +571,7 @@ export default function ReportsPage() {
                       : st === 'on-time' ? 'border-success/50 text-success bg-success-light hover:opacity-80'
                       : st === 'weekend' ? 'border-warning/50 text-warning bg-warning-light hover:opacity-80'
                       :                    'border-danger/50 text-danger bg-danger-light hover:opacity-80'
-                    const icon = st === null ? '✗' : st === 'on-time' ? '✓' : st === 'weekend' ? '~' : '!'
+                    const icon = st === 'on-time' ? '✓' : st === 'weekend' ? '~' : st === 'late' ? '!' : null
                     return (
                       <button
                         key={name}
@@ -579,7 +579,7 @@ export default function ReportsPage() {
                         className={`flex items-center gap-1.5 px-2.5 py-1 text-xs font-semibold border transition-colors ${chipClass}`}
                         title={report ? SUBMIT_STATUS_META[st!].long : 'Not submitted'}
                       >
-                        <span>{icon}</span>
+                        {icon && <span>{icon}</span>}
                         <span>{name.split(' ')[0]}</span>
                       </button>
                     )

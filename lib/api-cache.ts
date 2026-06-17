@@ -2,7 +2,10 @@ import { supabase } from './supabase'
 import { CACHE_TTL_SYSTEMS_MS } from './constants'
 
 export const STALE_TTL_MS = 60 * 60 * 1000  // 1 hour — return stale data past this and warn
-export const DEAD_TTL_MS  = 24 * 60 * 60 * 1000  // 24 hours — refuse to serve
+// Keep serving last-known data for a week. Previously 24h, which made the
+// dashboard go BLANK whenever a refresh failed for a day. Stale data (shown with
+// a staleness badge) is far better than no data.
+export const DEAD_TTL_MS  = 7 * 24 * 60 * 60 * 1000  // 7 days — refuse to serve
 
 export interface CacheRow {
   data: unknown

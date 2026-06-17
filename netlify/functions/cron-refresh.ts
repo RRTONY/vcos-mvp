@@ -45,5 +45,7 @@ export default async () => {
 
 export const config: Config = {
   // 14:00 UTC = 7:00 AM PDT (UTC-7). Adjust to 15:00 UTC in winter if needed.
-  schedule: '0 14 * * *',
+  // Run hourly so the cache stays fresh and self-heals from any single failed
+  // refresh (was once daily, which let the cache expire → blank dashboard).
+  schedule: '0 * * * *',
 }

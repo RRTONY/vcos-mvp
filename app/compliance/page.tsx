@@ -4,6 +4,8 @@ import { useEffect, useState } from 'react'
 import { useRefresh } from '@/components/RefreshContext'
 import { ShareSlackButton } from '@/components/ShareButtons'
 import { useMe } from '@/hooks/useMe'
+import { useToast } from '@/components/Toast'
+import { memberFiled } from '@/lib/report-match'
 
 interface CheckState {
   invoiceSubmitted: boolean
@@ -35,13 +37,6 @@ function mostRecentMonday(from: Date): Date {
   return d
 }
 
-function fmtWeek(mon: Date): string {
-  const fri = new Date(mon)
-  fri.setDate(mon.getDate() + 4)
-  const fmt = (d: Date) => d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
-  return `${fmt(mon)}–${fmt(fri)}`
-}
-
 const BT_ITEMS: { key: keyof CheckState; label: string }[] = [
   { key: 'invoiceSubmitted',    label: 'Braintrust invoice submitted this period?' },
   { key: 'webworkConfirmed',    label: 'WebWork screenshots cover full work period?' },
@@ -54,20 +49,20 @@ interface Member {
   role: string
   rate: number
   filesReport: boolean
-  filed: boolean
-  filedWeek1: boolean
-  filedWeek2: boolean
-  btAlias: string | null   // null = N/A (no Braintrust expected)
+  filed: boolean            // filed for the most recent week (drives Exception Report)
+  filedByWeek: boolean[]    // one entry per scorecard week, oldest → newest
+  btAlias: string | null    // null = N/A (no Braintrust expected)
   btFiled: boolean
 }
 
 
 export default function CompliancePage() {
   const { isAdmin, isOwner, me } = useMe()
+  const { toast } = useToast()
   const [team, setTeam] = useState<Member[]>([])
-  const [week1Label, setWeek1Label] = useState('Week 1')
-  const [week2Label, setWeek2Label] = useState('Week 2')
+  const [weekCols, setWeekCols] = useState<{ key: string; label: string }[]>([])
   const [checks, setChecks] = useState<CheckState>({ invoiceSubmitted: false, webworkConfirmed: false, emailMeterConfirmed: false, slackReportConfirmed: false })
+  const [reminding, setReminding] = useState(false)
   const { refreshKey } = useRefresh()
 
   // Load team from DB on mount
@@ -81,7 +76,7 @@ export default function CompliancePage() {
           role: m.role_description ?? '',
           rate: m.hourly_rate ?? 0,
           filesReport: m.files_report,
-          filed: false, filedWeek1: false, filedWeek2: false,
+          filed: false, filedByWeek: [],
           btAlias: m.bills_hours ? (m.braintrust_name ?? m.full_name.split(' ')[0].toLowerCase()) : null,
           btFiled: false,
         })))
@@ -95,29 +90,64 @@ export default function CompliancePage() {
     setChecks((prev) => ({ ...prev, [key]: !prev[key] }))
   }
 
+  async function sendReminders(names: string[]) {
+    if (!names.length) return
+    setReminding(true)
+    try {
+      const res = await fetch('/api/compliance/remind', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ names }),
+      })
+      const d = await res.json()
+      if (!res.ok) { toast(`Reminder failed: ${d.error ?? 'error'}`); return }
+      const dmed = d.dmed?.length ?? 0
+      const skipped = d.skipped?.length ?? 0
+      toast(
+        dmed > 0
+          ? `✓ DM sent to ${dmed} member${dmed !== 1 ? 's' : ''}${skipped > 0 ? ` · ${skipped} had no Slack match` : ''}`
+          : `No DMs sent — ${skipped} member${skipped !== 1 ? 's' : ''} had no Slack match. Use the channel alert instead.`
+      )
+    } catch {
+      toast('Network error sending reminders')
+    } finally {
+      setReminding(false)
+    }
+  }
+
   // Filing status comes from the authoritative weekly_reports table (the submit
-  // form writes there) — NOT the Slack channel scan, which was unreliable.
+  // form writes there) — NOT the Slack channel scan, which was unreliable. The
+  // same fuzzy name-matcher the dashboard uses (memberFiled) keeps the two views
+  // in agreement. We fetch the full SCORECARD_WEEKS history (oldest → newest).
   useEffect(() => {
     const curMon = mostRecentMonday(new Date())
-    const prevMon = new Date(curMon)
-    prevMon.setDate(curMon.getDate() - 7)
-    setWeek1Label(fmtWeek(prevMon))
-    setWeek2Label(fmtWeek(curMon))
-    const w1 = prevMon.toISOString().slice(0, 10)
-    const w2 = curMon.toISOString().slice(0, 10)
-    Promise.all([
-      fetch(`/api/weekly-reports?week_start=${w1}`, { cache: 'no-store' }).then((r) => r.json()).catch(() => []),
-      fetch(`/api/weekly-reports?week_start=${w2}`, { cache: 'no-store' }).then((r) => r.json()).catch(() => []),
-    ]).then(([d1, d2]: [{ submitted_by: string }[], { submitted_by: string }[]]) => {
-      const names1 = new Set((Array.isArray(d1) ? d1 : []).map((r) => r.submitted_by))
-      const names2 = new Set((Array.isArray(d2) ? d2 : []).map((r) => r.submitted_by))
+    const mondays = Array.from({ length: SCORECARD_WEEKS }, (_, i) => {
+      const mon = new Date(curMon)
+      mon.setDate(curMon.getDate() - (SCORECARD_WEEKS - 1 - i) * 7)
+      return mon
+    })
+    setWeekCols(mondays.map(mon => ({
+      key: mon.toISOString().slice(0, 10),
+      label: mon.toLocaleDateString('en-US', { month: 'numeric', day: 'numeric' }),
+    })))
+
+    Promise.all(
+      mondays.map(mon =>
+        fetch(`/api/weekly-reports?week_start=${mon.toISOString().slice(0, 10)}`, { cache: 'no-store' })
+          .then(r => r.json())
+          .catch(() => [])
+      )
+    ).then((weekly: { submitted_by: string }[][]) => {
+      const weeks = weekly.map(w => (Array.isArray(w) ? w : []))
       setTeam((prev) =>
-        prev.map((m) => ({
-          ...m,
-          filedWeek1: names1.has(m.name),
-          filedWeek2: names2.has(m.name),
-          filed: names2.has(m.name),
-        }))
+        prev.map((m) => {
+          const filedByWeek = weeks.map(w => memberFiled(w, m.name))
+          return {
+            ...m,
+            filedByWeek,
+            filed: filedByWeek[filedByWeek.length - 1] ?? false,
+          }
+        })
       )
     }).catch(() => {})
   }, [refreshKey])
@@ -159,32 +189,42 @@ export default function CompliancePage() {
           <table className="w-full text-sm border-collapse">
             <thead>
               <tr className="border-b border-sand3">
-                <th className="text-left py-2 font-extrabold text-xs uppercase tracking-widest text-ink3">Team Member</th>
+                <th className="text-left py-2 font-extrabold text-xs uppercase tracking-widest text-ink3 sticky left-0 bg-surface">Team Member</th>
                 <th className="text-left py-2 font-extrabold text-xs uppercase tracking-widest text-ink3 hidden sm:table-cell">Role</th>
-                {isOwner && <th className="text-right py-2 font-extrabold text-xs uppercase tracking-widest text-ink3 hidden sm:table-cell">Rate</th>}
-                <th className="text-center py-2 font-extrabold text-xs uppercase tracking-widest text-ink3">{week1Label}</th>
-                <th className="text-center py-2 font-extrabold text-xs uppercase tracking-widest text-ink3">{week2Label}</th>
+                {isOwner && <th className="text-right py-2 px-2 font-extrabold text-xs uppercase tracking-widest text-ink3 hidden sm:table-cell">Rate</th>}
+                {weekCols.map(c => (
+                  <th key={c.key} className="text-center py-2 px-1 font-extrabold text-[10px] font-mono text-ink3 whitespace-nowrap" title={c.key}>{c.label}</th>
+                ))}
+                <th className="text-center py-2 px-2 font-extrabold text-xs uppercase tracking-widest text-ink3">Filed</th>
                 <th className="text-center py-2 font-extrabold text-xs uppercase tracking-widest text-ink3 hidden sm:table-cell">Braintrust</th>
               </tr>
             </thead>
             <tbody>
               {visibleTeam.map((m) => {
                 const rateColor = m.rate >= 90 ? 'text-ink' : m.rate >= 70 ? 'text-ink3' : 'text-ink4'
+                const filedCount = m.filedByWeek.filter(Boolean).length
+                const totalWeeks = m.filedByWeek.length || weekCols.length
+                const ratePct = totalWeeks > 0 ? filedCount / totalWeeks : 0
+                const filedColor = ratePct >= 0.8 ? 'text-green-600' : ratePct >= 0.5 ? 'text-amber-600' : 'text-red-600'
                 return (
                   <tr key={m.name} className="border-b border-sand3 last:border-0">
-                    <td className="py-2.5 font-bold">{m.name}</td>
+                    <td className="py-2.5 font-bold sticky left-0 bg-surface">{m.name}</td>
                     <td className="py-2.5 text-ink3 text-xs hidden sm:table-cell">{m.role}</td>
-                    {isOwner && <td className={`py-2.5 font-mono font-bold text-right hidden sm:table-cell ${rateColor}`}>{m.rate}%</td>}
-                    <td className="py-2.5 text-center">
-                      {m.filedWeek1
-                        ? <span className="text-green-600 font-bold text-sm">✓</span>
-                        : <span className="text-ink4 font-bold text-sm">✕</span>
-                      }
-                    </td>
-                    <td className="py-2.5 text-center">
-                      {m.filedWeek2
-                        ? <span className="text-green-600 font-bold text-sm">✓</span>
-                        : <span className="text-ink4 font-bold text-sm">✕</span>
+                    {isOwner && <td className={`py-2.5 px-2 font-mono font-bold text-right hidden sm:table-cell ${rateColor}`}>{m.rate}%</td>}
+                    {weekCols.map((c, i) => (
+                      <td key={c.key} className="py-2.5 px-1 text-center">
+                        {!m.filesReport
+                          ? <span className="text-ink4 text-xs">—</span>
+                          : m.filedByWeek[i]
+                            ? <span className="text-green-600 font-bold text-sm">✓</span>
+                            : <span className="text-ink4 font-bold text-sm">✕</span>
+                        }
+                      </td>
+                    ))}
+                    <td className="py-2.5 px-2 text-center">
+                      {m.filesReport
+                        ? <span className={`font-mono font-bold text-xs ${filedColor}`}>{filedCount}/{totalWeeks}</span>
+                        : <span className="text-ink4 text-xs">—</span>
                       }
                     </td>
                     <td className="py-2.5 text-center hidden sm:table-cell">
@@ -242,9 +282,17 @@ export default function CompliancePage() {
             ))
           )}
           {missing.length > 0 && isAdmin && (
-            <div className="mt-3">
+            <div className="mt-3 flex flex-wrap gap-2">
+              <button
+                onClick={() => sendReminders(missing.map(m => m.name))}
+                disabled={reminding}
+                className="btn-primary text-xs py-1.5 px-3 disabled:opacity-50"
+                title="Send each missing member a personalized Slack DM"
+              >
+                {reminding ? 'Sending…' : 'DM Missing Members'}
+              </button>
               <ShareSlackButton
-                label="Alert Missing Members in Slack"
+                label="Alert in Channel"
                 message={[
                   `⚠️ *Weekly Report — Missing Submissions*`,
                   missing.map(m => `• ${m.name} (${m.role})`).join('\n'),
