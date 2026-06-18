@@ -11,7 +11,7 @@ interface CUTask {
   priority?: { id?: string; priority?: string }
   list?: { id: string; name: string }
   folder?: { name: string }
-  assignees?: Array<{ username?: string; email?: string; id?: string }>
+  assignees?: Array<{ username?: string; email?: string; id?: string; profilePicture?: string | null; initials?: string; color?: string }>
 }
 
 function taskDetail(t: CUTask) {
@@ -20,6 +20,7 @@ function taskDetail(t: CUTask) {
     name: t.name,
     list: t.list?.name ?? t.folder?.name ?? 'Unknown list',
     dueDate: t.due_date ? new Date(parseInt(t.due_date)).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : '',
+    dueTs: t.due_date ? parseInt(t.due_date) : null,
     priority: t.priority?.priority ?? '',
     url: t.url ?? `https://app.clickup.com/t/${t.id}`,
     assignees: (t.assignees ?? []).map((a) => a.username ?? a.email ?? '').filter(Boolean),
@@ -72,6 +73,17 @@ export async function buildClickUpSnapshot() {
     })
   }
 
+  // Avatar info per assignee (ClickUp profile pictures / initials) — keyed the
+  // same way as assigneeStats so the UI can look it up by assignee key.
+  const assigneeAvatars: Record<string, { image: string | null; initials: string | null; color: string | null }> = {}
+  for (const t of tasks) {
+    for (const a of (t.assignees ?? [])) {
+      const name = (a.username ?? a.email ?? '').toLowerCase()
+      if (!name || assigneeAvatars[name]) continue
+      assigneeAvatars[name] = { image: a.profilePicture ?? null, initials: a.initials ?? null, color: a.color ?? null }
+    }
+  }
+
   return {
     totalTasks: totalActive,
     overdue: overdueTasks.length,
@@ -83,6 +95,7 @@ export async function buildClickUpSnapshot() {
     highDetails:    highTasks.slice(0, 25).map(taskDetail),
     assigneeStats,
     tasksByAssignee,
+    assigneeAvatars,
   }
 }
 

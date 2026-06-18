@@ -11,6 +11,8 @@ import { FiCheck, FiX } from 'react-icons/fi'
 import Spinner from '@/components/Spinner'
 import { classifySubmission, SUBMIT_STATUS_META } from '@/lib/report-status'
 import { isReportFrom } from '@/lib/report-match'
+import TaskBuckets from '@/components/TaskBuckets'
+import Avatar from '@/components/Avatar'
 
 interface TeamMember { name: string; cuKey: string; role: string; filesReport: boolean }
 interface OKR { id: string; label: string; pct: number; note: string }
@@ -46,38 +48,23 @@ function findStats(
   return key ? assigneeStats[key] : null
 }
 
+function findAvatar(
+  avatars: Record<string, { image: string | null; initials: string | null; color: string | null }> | undefined,
+  cuKey: string
+) {
+  if (!avatars) return null
+  const key = Object.keys(avatars).find((k) => k.includes(cuKey))
+  return key ? avatars[key] : null
+}
+
 function findTasks(tasksByAssignee: Record<string, Task[]> | undefined, cuKey: string): Task[] {
   if (!tasksByAssignee) return []
   const key = Object.keys(tasksByAssignee).find((k) => k.includes(cuKey))
   return key ? tasksByAssignee[key] : []
 }
 
-function TaskRow({ t }: { t: Task }) {
-  const isUrgent = t.priority === 'urgent'
-  const isHigh = t.priority === 'high'
-  return (
-    <a
-      href={t.url}
-      target="_blank"
-      rel="noopener noreferrer"
-      className="flex items-start gap-3 py-2.5 border-b border-sand3 last:border-0 hover:bg-sand2 -mx-4 px-4 transition-colors group"
-    >
-      {(isUrgent || isHigh) && (
-        <span className={`text-xs font-semibold px-2 py-0.5 rounded-full flex-shrink-0 mt-0.5 ${isUrgent ? 'bg-danger-light text-danger' : 'bg-warning-light text-warning'}`}>
-          {isUrgent ? 'Urgent' : 'High'}
-        </span>
-      )}
-      <div className="flex-1 min-w-0">
-        <div className="text-sm font-medium group-hover:text-accent leading-snug">{t.name}</div>
-        <div className="text-xs text-ink4 mt-0.5">{t.list}{t.dueDate ? ` · Due ${t.dueDate}` : ''}</div>
-      </div>
-      <span className="text-ink4 text-sm flex-shrink-0 group-hover:text-accent">↗</span>
-    </a>
-  )
-}
-
 function MemberCard({
-  member, stats, tasks, filed, loading, sparkline, reportStatus,
+  member, stats, tasks, filed, loading, sparkline, reportStatus, avatar,
 }: {
   member: TeamMember
   stats: { total: number; overdue: number; urgent: number } | null
@@ -86,6 +73,7 @@ function MemberCard({
   loading: boolean
   sparkline?: { date: string; hours: number }[]
   reportStatus?: 'on-time' | 'late' | null
+  avatar?: { image: string | null; initials: string | null; color: string | null } | null
 }) {
   const [open, setOpen] = useState(false)
   const flow = stats && stats.total > 0
@@ -102,10 +90,14 @@ function MemberCard({
         onClick={() => setOpen((v) => !v)}
         className="w-full flex items-center gap-3 px-3 sm:px-5 py-3 sm:py-4 text-left hover:bg-sand2 transition-colors rounded-lg"
       >
-        {/* Avatar */}
-        <div className={`w-9 h-9 sm:w-10 sm:h-10 rounded-full flex items-center justify-center font-bold text-sm sm:text-base flex-shrink-0 ${hasIssues ? 'bg-danger text-white' : 'bg-accent-light text-accent'}`} title={reportStatus === 'late' ? 'Filed after Friday' : undefined}>
-          {member.name[0]}
-        </div>
+        {/* Avatar — ClickUp profile photo, else two-letter initials */}
+        <Avatar
+          name={member.name}
+          image={avatar?.image}
+          initials={avatar?.initials}
+          color={avatar?.color}
+          className="w-9 h-9 sm:w-10 sm:h-10 text-sm sm:text-base"
+        />
 
         {/* Middle — name, role, progress */}
         <div className="flex-1 min-w-0">
@@ -157,22 +149,16 @@ function MemberCard({
 
       {open && (
         <div className="border-t border-sand3 px-5 py-1">
-          {tasks.length === 0 ? (
-            <p className="text-sm text-ink3 py-3">No active tasks found in ClickUp.</p>
-          ) : (
-            <>
-              {tasks.slice(0, 15).map((t) => <TaskRow key={t.id} t={t} />)}
-              {tasks.length > 15 && (
-                <a
-                  href={`${CLICKUP_WORKSPACE_URL}/home`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="block text-sm text-accent hover:underline py-3"
-                >
-                  +{tasks.length - 15} more tasks in ClickUp ↗
-                </a>
-              )}
-            </>
+          <TaskBuckets tasks={tasks} />
+          {tasks.length > 0 && (
+            <a
+              href={`${CLICKUP_WORKSPACE_URL}/home`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="block text-sm text-accent hover:underline py-3"
+            >
+              Open all in ClickUp ↗
+            </a>
           )}
         </div>
       )}
@@ -305,6 +291,26 @@ export default function DashboardPage() {
   const displayMissing = missingMembers.length
   const displayTotal   = reportingMembers.length
 
+  // Non-admins see only their OWN ClickUp task numbers; admins see the whole team.
+  const myCuKey = me?.fullName ? (team.find(m => m.name === me.fullName)?.cuKey ?? null) : null
+  const scopedClickUp: ClickUpData | null = (() => {
+    if (isAdmin || !clickup) return clickup
+    const stats = clickup.assigneeStats
+      ? Object.entries(clickup.assigneeStats).find(([k]) => myCuKey && k.includes(myCuKey))?.[1]
+      : null
+    const total = stats?.total ?? 0
+    const overdue = stats?.overdue ?? 0
+    const urgent = stats?.urgent ?? 0
+    return {
+      ...clickup,
+      totalTasks: total,
+      overdue,
+      urgent,
+      overduePercent: total > 0 ? Math.round((overdue / total) * 100) : 0,
+      completed: 0,
+    }
+  })()
+
   // Items needing CEO attention
   const actions: { level: 'red' | 'amber' | 'blue'; text: React.ReactNode }[] = []
   if (!loading) {
@@ -317,20 +323,20 @@ export default function DashboardPage() {
         </span>
       ),
     })
-    if ((clickup?.urgent ?? 0) > 0) actions.push({
+    if ((scopedClickUp?.urgent ?? 0) > 0) actions.push({
       level: 'red',
       text: (
         <span className="flex items-center justify-between gap-2 w-full">
-          <span><strong>{clickup?.urgent} urgent tasks</strong> across the team need immediate resolution.</span>
+          <span><strong>{scopedClickUp?.urgent} urgent tasks</strong> {isAdmin ? 'across the team' : 'assigned to you'} need immediate resolution.</span>
           <a href={`${CLICKUP_WORKSPACE_URL}/home`} target="_blank" rel="noopener noreferrer" className="underline whitespace-nowrap text-xs">ClickUp ↗</a>
         </span>
       ),
     })
-    if ((clickup?.overduePercent ?? 0) > OVERDUE_ALERT_THRESHOLD) actions.push({
+    if ((scopedClickUp?.overduePercent ?? 0) > OVERDUE_ALERT_THRESHOLD) actions.push({
       level: 'red',
       text: (
         <span className="flex items-center justify-between gap-2 w-full">
-          <span><strong>CRM overdue at {clickup?.overduePercent}%</strong> — {clickup?.overdue} of {clickup?.totalTasks} tasks past due. Needs triage.</span>
+          <span><strong>{isAdmin ? 'CRM' : 'Your'} overdue at {scopedClickUp?.overduePercent}%</strong> — {scopedClickUp?.overdue} of {scopedClickUp?.totalTasks} tasks past due. Needs triage.</span>
           <a href={`${CLICKUP_WORKSPACE_URL}/home`} target="_blank" rel="noopener noreferrer" className="underline whitespace-nowrap text-xs">ClickUp ↗</a>
         </span>
       ),
@@ -447,15 +453,15 @@ export default function DashboardPage() {
 
         {/* CRM donut */}
         <div className={`stat-tile overflow-hidden ${loading ? 'animate-pulse' : ''}`}>
-          <div className="stat-label mb-3">CRM Task Breakdown</div>
+          <div className="stat-label mb-3">{isAdmin ? 'CRM Task Breakdown' : 'My Task Breakdown'}</div>
           {loading ? (
             <div className="h-24 flex items-center justify-center text-ink4 text-sm">Loading…</div>
-          ) : clickup && clickup.totalTasks ? (
+          ) : scopedClickUp && scopedClickUp.totalTasks ? (
             <CrmDonut
-              total={clickup.totalTasks}
-              overdue={clickup.overdue ?? 0}
-              urgent={clickup.urgent ?? 0}
-              completed={clickup.completed ?? 0}
+              total={scopedClickUp.totalTasks}
+              overdue={scopedClickUp.overdue ?? 0}
+              urgent={scopedClickUp.urgent ?? 0}
+              completed={scopedClickUp.completed ?? 0}
             />
           ) : (
             <div className="text-sm text-ink4">No task data</div>
@@ -465,18 +471,18 @@ export default function DashboardPage() {
         {/* Urgent + overdue quick tiles */}
         <div className="flex flex-col gap-3">
           <div className={`stat-tile flex-1 ${loading ? 'animate-pulse' : ''}`}>
-            <div className={`stat-value ${!loading && (clickup?.urgent ?? 0) > 0 ? 'text-danger' : 'text-ink'}`}>
-              {loading ? '—' : (clickup?.urgent ?? '—')}
+            <div className={`stat-value ${!loading && (scopedClickUp?.urgent ?? 0) > 0 ? 'text-danger' : 'text-ink'}`}>
+              {loading ? '—' : (scopedClickUp?.urgent ?? '—')}
             </div>
             <div className="stat-label">Urgent Tasks</div>
-            <div className="stat-sub">Need immediate action</div>
+            <div className="stat-sub">{isAdmin ? 'Need immediate action' : 'Assigned to you'}</div>
           </div>
           <div className={`stat-tile flex-1 ${loading ? 'animate-pulse' : ''}`}>
-            <div className={`stat-value ${!loading && (clickup?.overduePercent ?? 0) > 50 ? 'text-danger' : 'text-warning'}`}>
-              {loading ? '—' : `${clickup?.overduePercent ?? '—'}%`}
+            <div className={`stat-value ${!loading && (scopedClickUp?.overduePercent ?? 0) > 50 ? 'text-danger' : 'text-warning'}`}>
+              {loading ? '—' : `${scopedClickUp?.overduePercent ?? '—'}%`}
             </div>
-            <div className="stat-label">CRM Overdue</div>
-            {!loading && clickup && <div className="stat-sub">{clickup.overdue} of {clickup.totalTasks} tasks</div>}
+            <div className="stat-label">{isAdmin ? 'CRM Overdue' : 'My Overdue'}</div>
+            {!loading && scopedClickUp && <div className="stat-sub">{scopedClickUp.overdue} of {scopedClickUp.totalTasks} tasks</div>}
           </div>
         </div>
       </div>
@@ -511,6 +517,7 @@ export default function DashboardPage() {
               loading={loading}
               sparkline={wwMember?.byDay}
               reportStatus={member.filesReport ? getMemberReportStatus(member.name) : undefined}
+              avatar={findAvatar(clickup?.assigneeAvatars, member.cuKey)}
             />
           )
         })}

@@ -15,6 +15,8 @@ const TABS = [
   { label: 'Open Loops', href: '/openloops' },
 ]
 
+const KICKOFF_TAB = { label: 'Performance', href: '/kickoff' }
+
 const ADMIN_TABS = [
   { label: 'Users', href: '/settings/users' },
   { label: 'Team', href: '/settings/team' },
@@ -26,7 +28,7 @@ export default function NavTabs() {
   const path = usePathname()
   const { isAdmin } = useMe()
 
-  const allTabs = isAdmin ? [...TABS, ...ADMIN_TABS] : TABS
+  const allTabs = isAdmin ? [...TABS, KICKOFF_TAB, ...ADMIN_TABS] : TABS
 
   return (
     <div className="flex border-b border-sand4 bg-sand overflow-x-auto sticky top-16 z-30">

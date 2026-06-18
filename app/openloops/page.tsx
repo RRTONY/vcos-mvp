@@ -1,360 +1,118 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useRefresh } from '@/components/RefreshContext'
-import { CLICKUP_WORKSPACE_URL, SLACK_WORKSPACE_URL, SLACK_CHANNEL_WEEKLY_REPORTS, OVERDUE_ALERT_THRESHOLD, DEAL_COLD_DAYS, DEAL_STUCK_DAYS, INVOICE_PENDING_ALERT_DAYS } from '@/lib/constants'
+import { useMe } from '@/hooks/useMe'
+import Avatar from '@/components/Avatar'
+import Spinner from '@/components/Spinner'
+import TaskBuckets from '@/components/TaskBuckets'
+import { bucketFor } from '@/lib/due-buckets'
+import type { ClickUpData, Task } from '@/lib/types'
 
-// ─── Types ──────────────────────────────────────────────────────────────────
-
-type Severity = 'critical' | 'high' | 'info'
-
-interface Loop {
-  id: string
-  severity: Severity
-  category: string
-  text: string
-  sub?: string
-  url?: string
-  assignees?: string[]
+interface TeamRow {
+  full_name: string; vcos_username: string | null; clickup_key: string | null
+  role_description: string | null; active: boolean
 }
 
-// ─── Helpers ────────────────────────────────────────────────────────────────
-
-const SEVERITY_STYLE: Record<Severity, string> = {
-  critical: 'border-l-red-600 bg-red-50/30',
-  high:     'border-l-amber-500',
-  info:     'border-l-blue-400',
+function lookup<T>(map: Record<string, T> | undefined, cuKey: string): T | null {
+  if (!map || !cuKey) return null
+  const k = Object.keys(map).find(x => x.includes(cuKey))
+  return k ? map[k] : null
 }
 
-const SEVERITY_BADGE: Record<Severity, string> = {
-  critical: 'bg-black text-white',
-  high:     'bg-amber-100 text-amber-800',
-  info:     'bg-blue-50 text-blue-700',
+interface Person {
+  name: string; role: string; cuKey: string; tasks: Task[]
+  avatar: { image: string | null; initials: string | null; color: string | null } | null
+  overdue: number
 }
 
-const SEVERITY_LABEL: Record<Severity, string> = {
-  critical: 'CRITICAL',
-  high:     'HIGH',
-  info:     'INFO',
+function PersonCard({ person, defaultOpen }: { person: Person; defaultOpen: boolean }) {
+  const [open, setOpen] = useState(defaultOpen)
+  return (
+    <div className="card mb-2">
+      <button onClick={() => setOpen(v => !v)} className="w-full flex items-center gap-3 px-3 sm:px-5 py-3 text-left hover:bg-sand2 transition-colors rounded-lg">
+        <Avatar name={person.name} image={person.avatar?.image} initials={person.avatar?.initials} color={person.avatar?.color} className="w-9 h-9 text-sm" />
+        <div className="flex-1 min-w-0">
+          <span className="text-sm sm:text-base font-semibold">{person.name}</span>
+          {person.role && <span className="hidden sm:inline text-sm text-ink4 ml-2">{person.role}</span>}
+        </div>
+        {person.overdue > 0 && <span className="badge-red">{person.overdue} overdue</span>}
+        <span className="text-sm text-ink4 hidden sm:inline">{person.tasks.length} tasks</span>
+        <span className="text-ink4 text-xs ml-0.5">{open ? '▲' : '▼'}</span>
+      </button>
+      {open && (
+        <div className="border-t border-sand3 px-5 py-1">
+          <TaskBuckets tasks={person.tasks} />
+        </div>
+      )}
+    </div>
+  )
 }
-
-const CATEGORY_ORDER = ['Reports', 'CRM Tasks', 'BD Pipeline', 'Invoices', 'Systems']
-
-function groupBy<T>(arr: T[], key: (item: T) => string): Record<string, T[]> {
-  return arr.reduce((acc, item) => {
-    const k = key(item)
-    if (!acc[k]) acc[k] = []
-    acc[k].push(item)
-    return acc
-  }, {} as Record<string, T[]>)
-}
-
-// ─── Main Page ──────────────────────────────────────────────────────────────
-
-const ACK_KEY = 'vcos-openloops-acked'
 
 export default function OpenLoopsPage() {
-  const [loops, setLoops] = useState<Loop[]>([])
-  // Acknowledged loops: id → ISO timestamp. Persisted so the audit trail
-  // ("PM saw this critical item at 9am") survives reloads.
-  const [acked, setAcked] = useState<Record<string, string>>({})
-  const [loading, setLoading] = useState(true)
+  const { isAdmin, me } = useMe()
   const { refreshKey } = useRefresh()
+  const [clickup, setClickUp] = useState<ClickUpData | null>(null)
+  const [team, setTeam] = useState<TeamRow[]>([])
+  const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    try { const s = localStorage.getItem(ACK_KEY); if (s) setAcked(JSON.parse(s)) } catch { /* ignore */ }
-  }, [])
-
-  function persistAck(next: Record<string, string>) {
-    setAcked(next)
-    try { localStorage.setItem(ACK_KEY, JSON.stringify(next)) } catch { /* ignore */ }
-  }
-  function acknowledge(id: string) {
-    persistAck({ ...acked, [id]: new Date().toISOString() })
-  }
-  function unacknowledge(id: string) {
-    const next = { ...acked }; delete next[id]; persistAck(next)
-  }
-  const fmtAck = (iso: string) => new Date(iso).toLocaleString('en-US', { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })
-
-  useEffect(() => {
-    let cancelled = false
     setLoading(true)
-
     Promise.all([
       fetch('/api/clickup-tasks', { cache: 'no-store' }).then(r => r.json()).catch(() => null),
-      fetch('/api/slack-stats',   { cache: 'no-store' }).then(r => r.json()).catch(() => null),
-      fetch('/api/bd',            { cache: 'no-store' }).then(r => r.json()).catch(() => null),
-      fetch('/api/invoices',      { cache: 'no-store' }).then(r => r.json()).catch(() => null),
-    ]).then(([cu, slack, bd, inv]) => {
-      if (cancelled) return
-      const found: Loop[] = []
-
-      // ── Reports: missing weekly reports ─────────────────────────────────
-      const missing: string[] = slack?.weeklyReports?.missing ?? []
-      if (missing.length > 0) {
-        found.push({
-          id: 'reports-missing',
-          severity: 'critical',
-          category: 'Reports',
-          text: `${missing.length} team member${missing.length > 1 ? 's' : ''} have not filed this week`,
-          sub: missing.map((n: string) => n.split(' ')[0]).join(', '),
-          url: `${SLACK_WORKSPACE_URL}/${SLACK_CHANNEL_WEEKLY_REPORTS}`,
-        })
-      }
-
-      // ── CRM Tasks: urgent ───────────────────────────────────────────────
-      const urgentTasks = cu?.urgentDetails ?? []
-      for (const t of urgentTasks.slice(0, 10)) {
-        found.push({
-          id: `cu-urgent-${t.id}`,
-          severity: 'critical',
-          category: 'CRM Tasks',
-          text: t.name,
-          sub: `${t.list}${t.dueDate ? ` · Due ${t.dueDate}` : ''}`,
-          url: t.url,
-          assignees: t.assignees,
-        })
-      }
-
-      // ── CRM Tasks: high priority ─────────────────────────────────────────
-      const highTasks = cu?.highDetails ?? []
-      for (const t of highTasks.slice(0, 8)) {
-        found.push({
-          id: `cu-high-${t.id}`,
-          severity: 'high',
-          category: 'CRM Tasks',
-          text: t.name,
-          sub: `${t.list}${t.dueDate ? ` · Due ${t.dueDate}` : ''}`,
-          url: t.url,
-          assignees: t.assignees,
-        })
-      }
-
-      // ── CRM Tasks: overdue % alert ───────────────────────────────────────
-      if ((cu?.overduePercent ?? 0) > OVERDUE_ALERT_THRESHOLD) {
-        found.push({
-          id: 'cu-overdue-pct',
-          severity: 'critical',
-          category: 'CRM Tasks',
-          text: `${cu.overduePercent}% of ClickUp tasks are overdue (${cu.overdue}/${cu.totalTasks})`,
-          sub: 'CRM needs triage — too many stale tasks',
-          url: `${CLICKUP_WORKSPACE_URL}/home`,
-        })
-      }
-
-      // ── BD Pipeline: deals with no next action ───────────────────────────
-      const deals: Array<{
-        id: string; company: string; stage: string
-        next_action: string; last_contact: string | null
-        entered_stage_at: string | null; owner: string
-      }> = bd?.deals ?? []
-
-      const today = Date.now()
-
-      const noAction = deals.filter(d => d.stage !== 'Deferred' && !d.next_action)
-      if (noAction.length > 0) {
-        found.push({
-          id: 'bd-no-action',
-          severity: 'high',
-          category: 'BD Pipeline',
-          text: `${noAction.length} deal${noAction.length > 1 ? 's' : ''} have no next action defined`,
-          sub: noAction.map(d => d.company).join(', '),
-          url: '/bd',
-        })
-      }
-
-      // Deals gone cold (no contact 14d+)
-      const cold = deals.filter(d => {
-        if (d.stage === 'Deferred') return false
-        if (!d.last_contact) return false
-        return (today - new Date(d.last_contact).getTime()) / 86400000 > DEAL_COLD_DAYS
-      })
-      if (cold.length > 0) {
-        found.push({
-          id: 'bd-cold',
-          severity: 'high',
-          category: 'BD Pipeline',
-          text: `${cold.length} deal${cold.length > 1 ? 's' : ''} have gone cold (no contact 14d+)`,
-          sub: cold.map(d => d.company).join(', '),
-          url: '/bd',
-        })
-      }
-
-      // Deals stuck in same stage 21d+
-      const stuck = deals.filter(d => {
-        if (d.stage === 'Deferred' || !d.entered_stage_at) return false
-        return (today - new Date(d.entered_stage_at).getTime()) / 86400000 > DEAL_STUCK_DAYS
-      })
-      if (stuck.length > 0) {
-        found.push({
-          id: 'bd-stuck',
-          severity: 'high',
-          category: 'BD Pipeline',
-          text: `${stuck.length} deal${stuck.length > 1 ? 's' : ''} stuck in same stage for 21+ days`,
-          sub: stuck.map(d => `${d.company} (${d.stage})`).join(', '),
-          url: '/bd',
-        })
-      }
-
-      // ── Invoices: pending ────────────────────────────────────────────────
-      const invoices: Array<{ id: string; contractor: string; status: string; parsedAt: string }> =
-        inv?.invoices ?? []
-
-      const pending = invoices.filter(i => i.status === 'pending')
-      if (pending.length > 0) {
-        found.push({
-          id: 'inv-pending',
-          severity: 'high',
-          category: 'Invoices',
-          text: `${pending.length} Braintrust invoice${pending.length > 1 ? 's' : ''} pending approval`,
-          sub: pending.map(i => i.contractor).join(', '),
-          url: '/invoices',
-        })
-      }
-
-      // Invoices older than 7 days still pending
-      const oldPending = pending.filter(i => {
-        if (!i.parsedAt) return false
-        return (today - new Date(i.parsedAt).getTime()) / 86400000 > INVOICE_PENDING_ALERT_DAYS
-      })
-      if (oldPending.length > 0) {
-        found.push({
-          id: 'inv-old-pending',
-          severity: 'critical',
-          category: 'Invoices',
-          text: `${oldPending.length} invoice${oldPending.length > 1 ? 's' : ''} pending for 7+ days`,
-          sub: oldPending.map(i => i.contractor).join(', '),
-          url: '/invoices',
-        })
-      }
-
-      setLoops(found)
+      fetch('/api/team', { cache: 'no-store' }).then(r => r.json()).catch(() => []),
+    ]).then(([cu, t]) => {
+      setClickUp(cu)
+      setTeam(Array.isArray(t) ? t.filter((m: TeamRow) => m.active) : [])
       setLoading(false)
     })
-
-    return () => { cancelled = true }
   }, [refreshKey])
 
-  const open = loops.filter(l => !acked[l.id])
-  const acknowledgedLoops = loops.filter(l => acked[l.id])
-  const byCategory = groupBy(open, l => l.category)
-  const orderedCategories = [
-    ...CATEGORY_ORDER.filter(c => byCategory[c]),
-    ...Object.keys(byCategory).filter(c => !CATEGORY_ORDER.includes(c)),
-  ]
+  const people: Person[] = useMemo(() => {
+    if (!clickup?.tasksByAssignee) return []
+    const now = new Date()
+    const rows = isAdmin ? team : team.filter(m => me?.fullName && m.full_name === me.fullName)
+    return rows.map(m => {
+      const cuKey = (m.clickup_key ?? m.full_name.split(' ')[0]).toLowerCase()
+      const tasks = lookup(clickup.tasksByAssignee, cuKey) ?? []
+      return {
+        name: m.full_name,
+        role: m.role_description ?? '',
+        cuKey,
+        tasks,
+        avatar: lookup(clickup.assigneeAvatars, cuKey),
+        overdue: tasks.filter(t => bucketFor(t.dueTs, now) === 'overdue').length,
+      }
+    }).filter(p => p.tasks.length > 0)
+      .sort((a, b) => b.overdue - a.overdue || b.tasks.length - a.tasks.length)
+  }, [clickup, team, isAdmin, me])
 
-  const criticalCount = open.filter(l => l.severity === 'critical').length
-  const highCount     = open.filter(l => l.severity === 'high').length
+  const totalOverdue = people.reduce((s, p) => s + p.overdue, 0)
+  const totalTasks = people.reduce((s, p) => s + p.tasks.length, 0)
 
   return (
     <div>
-      {/* Header */}
-      <div className="flex items-center justify-between mt-6 mb-4">
+      <div className="flex items-center justify-between mt-6 mb-1">
         <h1 className="font-display text-xl tracking-widest">OPEN LOOPS</h1>
-        {!loading && open.length > 0 && (
-          <div className="flex gap-2 text-xs">
-            {criticalCount > 0 && (
-              <span className="font-bold text-red-600">{criticalCount} critical</span>
-            )}
-            {highCount > 0 && (
-              <span className="font-bold text-amber-600">{highCount} high</span>
-            )}
+        {!loading && people.length > 0 && (
+          <div className="flex gap-3 text-xs font-bold">
+            {totalOverdue > 0 && <span className="text-red-600">{totalOverdue} overdue</span>}
+            <span className="text-ink4">{totalTasks} open tasks</span>
           </div>
         )}
       </div>
+      <p className="text-xs text-ink4 mb-4">
+        {isAdmin ? 'Every team member’s' : 'Your'} open tasks, grouped by person and due date (Overdue · Due Today · Due This Week · No Due Date).
+      </p>
 
-      {/* Status banner */}
       {loading ? (
-        <div className="border border-sand3 p-4 text-sm text-ink4 animate-pulse mb-4">
-          Checking all systems…
+        <div className="py-6"><Spinner label="Loading tasks…" className="text-ink4 text-sm" /></div>
+      ) : people.length === 0 ? (
+        <div className="border border-green-300 bg-green-50 p-4 text-sm font-bold text-green-800">
+          ✓ No open tasks{!isAdmin && me?.fullName == null ? ' (your account isn’t linked to ClickUp)' : ''}.
         </div>
-      ) : open.length === 0 ? (
-        <div className="border border-green-300 bg-green-50 p-4 text-sm font-bold text-green-800 mb-4">
-          ✓ No open loops — all systems clear
-        </div>
-      ) : null}
-
-      {/* Loops grouped by category */}
-      {!loading && orderedCategories.map(category => (
-        <div key={category} className="mb-6">
-          <div className="text-xs font-bold uppercase tracking-widest text-ink3 mb-2 flex items-center gap-2">
-            {category}
-            <span className="font-normal text-ink4">({byCategory[category].length})</span>
-          </div>
-          <div className="space-y-2">
-            {byCategory[category].map(loop => (
-              <div
-                key={loop.id}
-                className={`border border-l-4 ${SEVERITY_STYLE[loop.severity]} bg-sand`}
-              >
-                <div className="p-3 flex items-start gap-3">
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 flex-wrap mb-1">
-                      <span className={`text-[10px] font-bold px-1.5 py-0.5 ${SEVERITY_BADGE[loop.severity]}`}>
-                        {SEVERITY_LABEL[loop.severity]}
-                      </span>
-                      {loop.assignees && loop.assignees.length > 0 && (
-                        <span className="text-xs text-ink3 font-medium">
-                          {loop.assignees.join(' · ')}
-                        </span>
-                      )}
-                    </div>
-                    <p className="text-sm font-medium leading-snug">{loop.text}</p>
-                    {loop.sub && (
-                      <p className="text-xs text-ink3 mt-0.5 leading-snug">{loop.sub}</p>
-                    )}
-                  </div>
-                  <div className="flex gap-1 flex-shrink-0">
-                    {loop.url && (
-                      <a
-                        href={loop.url}
-                        target={loop.url.startsWith('http') ? '_blank' : undefined}
-                        rel="noopener noreferrer"
-                        className="border border-sand3 px-2 py-1 text-[10px] font-bold hover:bg-sand2 transition-colors whitespace-nowrap"
-                      >
-                        Open ↗
-                      </a>
-                    )}
-                    <button
-                      onClick={() => acknowledge(loop.id)}
-                      className="border border-sand3 px-2 py-1 text-[10px] font-bold hover:bg-sand2 transition-colors text-ink3 whitespace-nowrap"
-                      title="Acknowledge — mark as seen / in review (logged with a timestamp)"
-                    >
-                      ✓ Ack
-                    </button>
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      ))}
-
-      {/* Acknowledged — audit trail */}
-      {acknowledgedLoops.length > 0 && (
-        <div className="mt-8">
-          <div className="text-xs font-bold uppercase tracking-widest text-ink3 mb-2">
-            Acknowledged ({acknowledgedLoops.length})
-          </div>
-          <div className="space-y-1.5">
-            {acknowledgedLoops.map(loop => (
-              <div key={loop.id} className="flex items-center gap-3 border border-sand3 bg-sand2/50 px-3 py-2 rounded">
-                <span className="text-success text-xs flex-shrink-0">✓</span>
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm text-ink3 line-through truncate">{loop.text}</p>
-                  <p className="text-[10px] text-ink4">Acknowledged {fmtAck(acked[loop.id])}</p>
-                </div>
-                <button
-                  onClick={() => unacknowledge(loop.id)}
-                  className="text-[10px] text-ink4 underline hover:text-ink flex-shrink-0"
-                >
-                  Undo
-                </button>
-              </div>
-            ))}
-          </div>
-        </div>
+      ) : (
+        people.map((p, i) => <PersonCard key={p.name} person={p} defaultOpen={i === 0} />)
       )}
     </div>
   )
