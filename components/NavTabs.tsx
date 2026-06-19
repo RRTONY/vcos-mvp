@@ -6,6 +6,7 @@ import { useMe } from '@/hooks/useMe'
 
 const TABS = [
   { label: 'Dashboard', href: '/' },
+  { label: 'VCoS-AI', href: '/chatbot' },
   { label: 'Reports', href: '/reports' },
   { label: 'Submit Report', href: '/submit' },
   { label: 'Compliance', href: '/compliance' },

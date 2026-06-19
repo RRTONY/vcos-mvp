@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useState, useRef, useCallback } from 'react'
+import Link from 'next/link'
 import { useRefresh } from '@/components/RefreshContext'
 import { ShareSlackButton } from '@/components/ShareButtons'
 import type { Task, ClickUpData, SlackData, WebWorkMember } from '@/lib/types'
@@ -421,6 +422,19 @@ export default function DashboardPage() {
           <ShareSlackButton label="Post Brief" message={shareMsg} />
         )}
       </div>
+
+      {/* Tony — chatbot entry */}
+      <Link
+        href="/chatbot"
+        className="card mb-6 flex items-center gap-4 px-5 py-4 hover:border-accent hover:shadow-card-md transition-all group"
+      >
+        <div className="w-11 h-11 rounded-full bg-ink text-white flex items-center justify-center font-display text-base flex-shrink-0">AI</div>
+        <div className="flex-1 min-w-0">
+          <div className="text-sm font-bold text-ink group-hover:text-accent transition-colors">VCoS-AI — your Virtual Chief of Staff</div>
+          <div className="text-xs text-ink4 mt-0.5">Ask anything, find info, and generate reports from live data — download as PDF or Word. Team-wide reports are admin-only.</div>
+        </div>
+        <span className="badge-accent flex-shrink-0">Open chat →</span>
+      </Link>
 
       {/* Key metrics */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">

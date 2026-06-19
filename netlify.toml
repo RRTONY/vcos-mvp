@@ -39,6 +39,14 @@
   #                              users:read, chat:write
   #   FIREFLIES_API_KEY        = d109cc2...
   #   NEXT_PUBLIC_URL          = https://vcos-ramprate.netlify.app  (no trailing slash, used by all cron functions)
+  #   ANTHROPIC_API_KEY        = sk-ant-...  (powers the VCoS-AI chatbot + scheduled morning brief)
+  #   SLACK_BRIEF_CHANNEL      = (optional) channel ID for the morning brief; defaults to SLACK_ADMIN_CHANNEL
+
+# ── SCHEDULED FUNCTIONS (netlify/functions/) ───────────────────
+#   cron-refresh   · 0 * * * *      hourly cache refresh (ClickUp/Slack/WebWork/Fireflies)
+#   daily-report   · 0 14 * * *     daily standup compile
+#   invoice-sync   · (see file)     ClickUp → invoices
+#   morning-brief  · 15 14 * * 1-5  VCoS-AI /gm brief → Slack, weekday mornings (7:15 AM PDT)
 
 # ── NEXT.JS PLUGIN ─────────────────────────────────────────────
 [[plugins]]
