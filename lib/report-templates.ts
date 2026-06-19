@@ -18,4 +18,5 @@ export const REPORT_TEMPLATES: ReportTemplate[] = [
   { id: 'deals',   label: 'Pipeline sweep',    admin: true, prompt: 'Run /deals — a pipeline report: status per active deal by close probability, threads gone cold, and the next action for each.' },
   { id: 'overdue', label: "Who's overdue?",    admin: true, prompt: 'Create a report of who has overdue tasks right now, with a per-person table and the most urgent items.' },
   { id: 'exec',    label: 'Weekly exec brief', admin: true, prompt: 'Write the weekly executive brief — wins, risks, and what needs Tony — as a one-page report. I will download it.' },
+  { id: 'perf',    label: 'Performance report', admin: true, prompt: 'PERFORMANCE — generate the full Team Performance report for the current week. I will download it.' },
 ]

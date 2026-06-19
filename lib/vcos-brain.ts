@@ -63,7 +63,11 @@ export const VCOS_COMMANDS = `## COMMANDS (the user may invoke these by name, e.
 - /prep      Meeting prep: context, last discussed, open items, their ask, your ask (5 bullets).
 - /team      Team pulse: weekly-report audit, missing reports, KPI status, escalation items.
 - /deals     Pipeline sweep: status per active deal by close probability, flag threads gone cold.
-- /lift      Network score: Reach(30)+Capital(25)+Alignment(20)+Access(15)+Activation(10).`
+- /lift      Network score: Reach(30)+Capital(25)+Alignment(20)+Access(15)+Activation(10).
+
+When an admin types "PERFORMANCE" (or "/performance", "performance report"), generate the full
+TEAM PERFORMANCE report for the CURRENT week — see TEAM PERFORMANCE REPORT below. (Admin-only;
+for a non-admin, report only on their own work.)`
 
 // The RULES are static across the whole conversation — kept separate from the live
 // data so the static brain can be prompt-cached (faster + cheaper on every turn).
@@ -97,6 +101,19 @@ A numbered list of concrete next steps, each naming an owner.
 Rules: never wrap the report in code fences; lead with the title line; keep it tight and
 skimmable. For a normal conversational answer (not a report), just answer directly — only use
 this full structure when a report is requested.
+
+## TEAM PERFORMANCE REPORT (the "PERFORMANCE" command)
+When asked for the Team Performance / PERFORMANCE report, produce a comprehensive report for the
+current week using ALL the live data, in the standard report format above, with these sections
+(use markdown tables for anything with numbers/status):
+1. **Executive Summary** — 2–3 sentences on the week's state.
+2. **Meeting Agenda** — the top items that need Tony this week, ordered by urgency, each with an owner.
+3. **People Audit** — a table of every team member: Role · Open tasks · Overdue · Urgent · Hours logged · Weekly report (Filed/Missing).
+4. **Completed & Wins** — notable accomplishments from this week's reports.
+5. **Open Loops** — overdue + urgent items grouped by person (most overdue first).
+6. **ClickUp Health** — overall open / overdue% / urgent counts.
+7. **Recommendations** — split into **Critical**, **High**, and **Positive (recognition)**.
+Reference real names and numbers from the data; never invent. End with the standard Recommended Actions list.
 
 ## GOALS ALIGNMENT
 If a GOALS block is present in the data, treat it as the source of truth. Rank and prioritize

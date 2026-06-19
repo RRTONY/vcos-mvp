@@ -7,7 +7,7 @@ import { getCachedSWR } from './api-cache'
 import { isReportFrom } from './report-match'
 import { bucketFor } from './due-buckets'
 import { loadGoals, loadCommitments } from './memory'
-import type { ClickUpData, Task, Meeting } from './types'
+import type { ClickUpData, Task, Meeting, WebWorkMember } from './types'
 
 function mostRecentMonday(from: Date): Date {
   const d = new Date(from); d.setDate(d.getDate() - ((d.getDay() + 6) % 7)); d.setHours(0, 0, 0, 0); return d
@@ -40,7 +40,7 @@ export async function buildChatContext(username: string, isAdmin: boolean): Prom
   })()
 
   const sb = getSupabase()
-  const [members, cu, reportsRes, me, goals, commitments, ff] = await Promise.all([
+  const [members, cu, reportsRes, me, goals, commitments, ff, ww] = await Promise.all([
     getTeamMembers().catch(() => [] as TeamMemberRow[]),
     getCachedSWR<ClickUpData>('clickup').then(r => r.data).catch(() => null),
     (async (): Promise<ReportRow[] | null> => {
@@ -56,7 +56,14 @@ export async function buildChatContext(username: string, isAdmin: boolean): Prom
     loadGoals().catch(() => ''),
     loadCommitments().catch(() => []),
     getCachedSWR<{ meetings: Meeting[] }>('fireflies').then(r => r.data?.meetings ?? []).catch(() => [] as Meeting[]),
+    getCachedSWR<{ members: WebWorkMember[] }>('webwork').then(r => r.data?.members ?? []).catch(() => [] as WebWorkMember[]),
   ])
+
+  const hoursFor = (key: string): number | null => {
+    if (!key) return null
+    const w = ww.find(x => { const u = x.username.toLowerCase(); return u.includes(key) || key.includes(u) })
+    return w?.totalHours ?? null
+  }
 
   const reports = reportsRes ?? []
   // Scope the roster: admins see everyone; a user sees only themselves.
@@ -122,8 +129,9 @@ export async function buildChatContext(username: string, isAdmin: boolean): Prom
     const overdue = tasks.filter(t => bucketFor(t.dueTs, now) === 'overdue')
     const report = reports.find(r => isReportFrom(r.submitted_by, m.full_name)) ?? null
 
+    const hrs = hoursFor(key)
     lines.push(`### ${m.full_name}${m.role_description ? ` — ${m.role_description}` : ''}`)
-    lines.push(`  - Tasks: ${stats?.total ?? tasks.length} open · ${stats?.overdue ?? overdue.length} overdue · ${stats?.urgent ?? 0} urgent`)
+    lines.push(`  - Tasks: ${stats?.total ?? tasks.length} open · ${stats?.overdue ?? overdue.length} overdue · ${stats?.urgent ?? 0} urgent${hrs != null ? ` · ${hrs}h logged this week` : ''}`)
     lines.push(`  - Weekly report (this week): ${report ? 'FILED' : (m.files_report ? 'NOT FILED' : 'exempt')}`)
     if (report) {
       if (report.win) lines.push(`    · Win: ${report.win}`)
