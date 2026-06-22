@@ -10,7 +10,7 @@ import { useMe } from '@/hooks/useMe'
 import { CLICKUP_WORKSPACE_URL, SLACK_WORKSPACE_URL, SLACK_CHANNEL_WEEKLY_REPORTS, OVERDUE_ALERT_THRESHOLD } from '@/lib/constants'
 import { FiCheck, FiX } from 'react-icons/fi'
 import Spinner from '@/components/Spinner'
-import { classifySubmission, SUBMIT_STATUS_META } from '@/lib/report-status'
+import { classifySubmission, SUBMIT_STATUS_META, reportState, type ReportState } from '@/lib/report-status'
 import { isReportFrom } from '@/lib/report-match'
 import TaskBuckets from '@/components/TaskBuckets'
 import Avatar from '@/components/Avatar'
@@ -73,15 +73,17 @@ function MemberCard({
   filed: boolean
   loading: boolean
   sparkline?: { date: string; hours: number }[]
-  reportStatus?: 'on-time' | 'late' | null
+  reportStatus?: ReportState
   avatar?: { image: string | null; initials: string | null; color: string | null } | null
 }) {
   const [open, setOpen] = useState(false)
   const flow = stats && stats.total > 0
     ? Math.max(5, Math.round(100 - (stats.overdue / stats.total) * 100))
     : null
-  const effectiveFiled = reportStatus !== undefined ? reportStatus !== null : filed
-  const hasIssues = (stats?.overdue ?? 0) > 0 || (stats?.urgent ?? 0) > 0 || !effectiveFiled
+  // Only a 'missing' report (Friday passed, still not filed) counts as an issue;
+  // 'pending' (before Friday) is neutral.
+  const reportMissing = reportStatus === 'missing'
+  const hasIssues = (stats?.overdue ?? 0) > 0 || (stats?.urgent ?? 0) > 0 || reportMissing
 
   const flowColor = flow === null ? '' : flow >= 80 ? 'bg-success' : flow >= 50 ? 'bg-warning' : 'bg-danger'
 
@@ -131,15 +133,12 @@ function MemberCard({
             </span>
           )}
           {member.filesReport && (
-            reportStatus !== undefined
-              ? reportStatus === 'on-time'
-                ? <span className="badge-green">Filed ✓</span>
-                : reportStatus === 'late'
-                  ? <span className="badge-amber">Filed (late)</span>
-                  : <span className="badge-red">Missing</span>
-              : <span className={filed ? 'badge-green' : 'badge-red'}>
-                  {filed ? 'Filed' : 'Missing'}
-                </span>
+            reportStatus === 'on-time' ? <span className="badge-green">Filed ✓</span>
+              : reportStatus === 'weekend' ? <span className="badge-amber">Filed (wknd)</span>
+              : reportStatus === 'late' ? <span className="badge-amber">Filed (late)</span>
+              : reportStatus === 'pending' ? <span className="badge">Pending</span>
+              : reportStatus === 'missing' ? <span className="badge-red">Not Submitted</span>
+              : <span className={filed ? 'badge-green' : 'badge'}>{filed ? 'Filed' : 'Pending'}</span>
           )}
           {stats && (
             <span className="hidden sm:inline text-sm text-ink4">{stats.total} tasks</span>
@@ -266,9 +265,6 @@ export default function DashboardPage() {
 
   const currentMonday = getMostRecentMonday(new Date())
   const isCurrentWeek = selectedMonday.getTime() === currentMonday.getTime()
-  const selectedFriday = new Date(selectedMonday)
-  selectedFriday.setDate(selectedMonday.getDate() + 4)
-  selectedFriday.setHours(23, 59, 59, 999)
   const selectedWeekLabel = fmtWeekLabel(selectedMonday)
 
   function getMemberReportEntry(memberName: string): WeeklyReportEntry | null {
@@ -277,19 +273,22 @@ export default function DashboardPage() {
     return weeklyReports.find(r => isReportFrom(r.submitted_by, memberName)) ?? null
   }
 
-  function getMemberReportStatus(memberName: string): 'on-time' | 'late' | null {
+  // A report is DUE end of Friday. Before Friday a non-filed report is 'pending'
+  // (not flagged); only after Friday does it become 'missing' / Not Submitted.
+  function getMemberReportStatus(memberName: string): ReportState {
     const report = getMemberReportEntry(memberName)
-    if (!report) return null
-    return new Date(report.created_at) <= selectedFriday ? 'on-time' : 'late'
+    return reportState(selectedMonday, report?.created_at ?? null, new Date())
   }
 
   const reportingMembers = team.filter(m => m.filesReport)
-  // Authoritative source = actual submissions in the weekly_reports table (the form
-  // writes there). Earlier this used Slack-channel scanning, which failed to match
-  // submissions and flagged everyone as missing.
-  const missingMembers   = reportingMembers.filter(m => getMemberReportEntry(m.name) === null)
-  const displayFiled   = reportingMembers.length - missingMembers.length
+  // Authoritative source = actual submissions in the weekly_reports table.
+  const FILED_STATES: ReportState[] = ['on-time', 'weekend', 'late']
+  const filedMembers   = reportingMembers.filter(m => FILED_STATES.includes(getMemberReportStatus(m.name)))
+  const pendingMembers = reportingMembers.filter(m => getMemberReportStatus(m.name) === 'pending')
+  const missingMembers = reportingMembers.filter(m => getMemberReportStatus(m.name) === 'missing')
+  const displayFiled   = filedMembers.length
   const displayMissing = missingMembers.length
+  const displayPending = pendingMembers.length
   const displayTotal   = reportingMembers.length
 
   // Non-admins see only their OWN ClickUp task numbers; admins see the whole team.
@@ -319,7 +318,7 @@ export default function DashboardPage() {
       level: 'red',
       text: (
         <span className="flex items-center justify-between gap-2 w-full">
-          <span><strong>Reports missing:</strong> {missingMembers.map(m => m.name).join(', ')} have not filed this week.</span>
+          <span><strong>Not submitted:</strong> {missingMembers.map(m => m.name).join(', ')} missed the Friday deadline.</span>
           <a href={`${SLACK_WORKSPACE_URL}/${SLACK_CHANNEL_WEEKLY_REPORTS}`} target="_blank" rel="noopener noreferrer" className="underline whitespace-nowrap text-xs">Slack channel ↗</a>
         </span>
       ),
@@ -448,10 +447,11 @@ export default function DashboardPage() {
             <div className="stat-sub">
               {(() => {
                 const lateCount = reportingMembers.filter(m => getMemberReportStatus(m.name) === 'late').length
-                if (displayMissing > 0) return `${displayMissing} missing${lateCount > 0 ? ` · ${lateCount} late` : ''}`
+                if (displayMissing > 0) return `${displayMissing} not submitted${lateCount > 0 ? ` · ${lateCount} late` : ''}`
+                if (displayPending > 0) return `${displayPending} pending · due Friday`
                 if (lateCount > 0) return `All filed · ${lateCount} submitted late`
                 if (displayFiled > 0) return 'All filed on time ✓'
-                return isCurrentWeek && missing.length > 0 ? `Missing: ${missing.join(', ')}` : '—'
+                return '—'
               })()}
             </div>
           )}

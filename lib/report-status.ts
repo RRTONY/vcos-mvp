@@ -13,6 +13,30 @@ export function classifySubmission(createdAt: string | Date, weekMonday: Date): 
   return 'late'
 }
 
+// The report for a week is DUE end of Friday of that week.
+export function reportDueDate(weekMonday: Date): Date {
+  const fri = new Date(weekMonday); fri.setDate(weekMonday.getDate() + 4); fri.setHours(23, 59, 59, 999)
+  return fri
+}
+export function reportDeadlinePassed(weekMonday: Date, now: Date = new Date()): boolean {
+  return now.getTime() > reportDueDate(weekMonday).getTime()
+}
+
+// Full state of a member's report for a given week:
+//   filed → on-time | weekend | late  (how timely it was)
+//   not filed, before/through Friday → 'pending' (do NOT flag as missing)
+//   not filed, after Friday          → 'missing' (now overdue / "Not Submitted")
+export type ReportState = SubmitStatus | 'pending' | 'missing'
+
+export function reportState(
+  weekMonday: Date,
+  createdAt: string | Date | null | undefined,
+  now: Date = new Date(),
+): ReportState {
+  if (createdAt) return classifySubmission(createdAt, weekMonday)
+  return reportDeadlinePassed(weekMonday, now) ? 'missing' : 'pending'
+}
+
 // Presentation metadata for each status (design-token classes).
 export const SUBMIT_STATUS_META: Record<SubmitStatus, {
   label: string        // short badge label
