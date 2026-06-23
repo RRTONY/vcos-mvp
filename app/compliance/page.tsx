@@ -6,6 +6,7 @@ import { ShareSlackButton } from '@/components/ShareButtons'
 import { useMe } from '@/hooks/useMe'
 import { useToast } from '@/components/Toast'
 import { memberFiled } from '@/lib/report-match'
+import { reportDeadlinePassed } from '@/lib/report-status'
 
 interface CheckState {
   invoiceSubmitted: boolean
@@ -173,7 +174,10 @@ export default function CompliancePage() {
   // Normal users only see their own row (consistent with report visibility rules);
   // managers see the full team.
   const visibleTeam = isAdmin ? team : team.filter((m) => me?.fullName && m.name === me.fullName)
-  const missing = visibleTeam.filter((m) => m.filesReport && !m.filed)
+  // A report is only "missing" once Friday has passed; before then it's pending.
+  const deadlinePassed = reportDeadlinePassed(mostRecentMonday(new Date()))
+  const missing = deadlinePassed ? visibleTeam.filter((m) => m.filesReport && !m.filed) : []
+  const pending = !deadlinePassed ? visibleTeam.filter((m) => m.filesReport && !m.filed) : []
   const { label: scorecardRange, weeksLabel } = getScorecardRange()
 
   return (
@@ -211,16 +215,22 @@ export default function CompliancePage() {
                     <td className="py-2.5 font-bold sticky left-0 bg-surface">{m.name}</td>
                     <td className="py-2.5 text-ink3 text-xs hidden sm:table-cell">{m.role}</td>
                     {isOwner && <td className={`py-2.5 px-2 font-mono font-bold text-right hidden sm:table-cell ${rateColor}`}>{m.rate}%</td>}
-                    {weekCols.map((c, i) => (
-                      <td key={c.key} className="py-2.5 px-1 text-center">
-                        {!m.filesReport
-                          ? <span className="text-ink4 text-xs">—</span>
-                          : m.filedByWeek[i]
-                            ? <span className="text-green-600 font-bold text-sm">✓</span>
-                            : <span className="text-ink4 font-bold text-sm">✕</span>
-                        }
-                      </td>
-                    ))}
+                    {weekCols.map((c, i) => {
+                      const isCurrentWeek = i === weekCols.length - 1
+                      const pendingCell = isCurrentWeek && !deadlinePassed && !m.filedByWeek[i]
+                      return (
+                        <td key={c.key} className="py-2.5 px-1 text-center">
+                          {!m.filesReport
+                            ? <span className="text-ink4 text-xs">—</span>
+                            : m.filedByWeek[i]
+                              ? <span className="text-green-600 font-bold text-sm">✓</span>
+                              : pendingCell
+                                ? <span className="text-amber-500 font-bold text-sm" title="Pending — due Friday">·</span>
+                                : <span className="text-ink4 font-bold text-sm">✕</span>
+                          }
+                        </td>
+                      )
+                    })}
                     <td className="py-2.5 px-2 text-center">
                       {m.filesReport
                         ? <span className={`font-mono font-bold text-xs ${filedColor}`}>{filedCount}/{totalWeeks}</span>
@@ -269,7 +279,9 @@ export default function CompliancePage() {
         </div>
         <div className="card-body">
           {missing.length === 0 ? (
-            <div className="text-sm text-ink3">All team members have filed ✓</div>
+            !deadlinePassed && pending.length > 0
+              ? <div className="text-sm text-ink3">{pending.length} report{pending.length > 1 ? 's' : ''} pending — due Friday. Not overdue yet.</div>
+              : <div className="text-sm text-ink3">All team members have filed ✓</div>
           ) : (
             missing.map((m) => (
               <div key={m.name} className="flex items-center justify-between py-2.5 border-b border-sand3 last:border-0">

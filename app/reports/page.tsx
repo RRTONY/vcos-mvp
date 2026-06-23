@@ -13,7 +13,7 @@ import MeetingTimeline from '@/components/MeetingTimeline'
 import WeekCalendar from '@/components/WeekCalendar'
 import { FiCheck, FiAlertTriangle } from 'react-icons/fi'
 import Spinner from '@/components/Spinner'
-import { classifySubmission, SUBMIT_STATUS_META, type SubmitStatus } from '@/lib/report-status'
+import { classifySubmission, SUBMIT_STATUS_META, reportDeadlinePassed, type SubmitStatus } from '@/lib/report-status'
 import dynamic from 'next/dynamic'
 const HoursBar = dynamic(() => import('@/components/charts/HoursBar'), { ssr: false })
 const OkrRings = dynamic(() => import('@/components/charts/OkrRing'), { ssr: false })
@@ -44,13 +44,15 @@ function Section({ title, children }: { title: string; children: React.ReactNode
   )
 }
 
-function MemberRollup({ name, stats, tasks, didFile, flow, loading }: {
+function MemberRollup({ name, stats, tasks, didFile, flow, loading, deadlinePassed = true }: {
   name: string
   stats: { total: number; overdue: number; urgent: number } | null
-  tasks: Task[]; didFile: boolean; flow: number | null; loading: boolean
+  tasks: Task[]; didFile: boolean; flow: number | null; loading: boolean; deadlinePassed?: boolean
 }) {
   const [open, setOpen] = useState(false)
-  const hasIssues = (stats?.overdue ?? 0) > 0 || (stats?.urgent ?? 0) > 0 || !didFile
+  // Before Friday, an unfiled report is "pending" (not an issue / not "missing").
+  const reportPending = !didFile && !deadlinePassed
+  const hasIssues = (stats?.overdue ?? 0) > 0 || (stats?.urgent ?? 0) > 0 || (!didFile && deadlinePassed)
   return (
     <div className={`border ${hasIssues ? 'border-ink/30' : 'border-sand3'}`}>
       <button
@@ -76,8 +78,8 @@ function MemberRollup({ name, stats, tasks, didFile, flow, loading }: {
             )}
           </div>
         ) : null}
-        <span className={`text-[10px] font-bold ml-2 ${didFile ? 'text-green-700' : 'text-red-600'}`}>
-          {didFile ? '● Filed' : '✕ Missing'}
+        <span className={`text-[10px] font-bold ml-2 ${didFile ? 'text-green-700' : reportPending ? 'text-ink4' : 'text-red-600'}`}>
+          {didFile ? '● Filed' : reportPending ? '· Pending' : '✕ Missing'}
         </span>
         <span className="text-ink4 text-xs ml-2">{open ? '▲' : '▼'}</span>
       </button>
@@ -443,8 +445,8 @@ export default function ReportsPage() {
   return (
     <div>
       {/* Tab bar */}
-      <div className="overflow-x-auto -mx-4 sm:mx-0 mt-6 mb-4">
-        <div className="flex gap-0 border-b border-sand3 min-w-max px-4 sm:px-0">
+      <div className="overflow-x-auto -mx-5 sm:mx-0 mt-6 mb-4">
+        <div className="flex gap-0 border-b border-sand3 min-w-max px-5 sm:px-0">
           {TABS.map(t => (
             <button
               key={t.id}
@@ -488,7 +490,11 @@ export default function ReportsPage() {
         const onTimeCount  = weekReports.filter(r => statusOf(r) === 'on-time').length
         const weekendCount = weekReports.filter(r => statusOf(r) === 'weekend').length
         const lateCount    = weekReports.filter(r => statusOf(r) === 'late').length
-        const missingCount = reportMembers.filter(n => !submittedNames.has(n)).length
+        // Not-filed counts as "missing" only after Friday; before then it's pending.
+        const deadlinePassed = reportDeadlinePassed(weekMon)
+        const notFiled = reportMembers.filter(n => !submittedNames.has(n))
+        const missingCount = deadlinePassed ? notFiled.length : 0
+        const pendingCount = deadlinePassed ? 0 : notFiled.length
 
         return (
           <div className="space-y-4">
@@ -520,7 +526,8 @@ export default function ReportsPage() {
                   {onTimeCount > 0  && <span className="text-success font-semibold">{onTimeCount} on time</span>}
                   {weekendCount > 0 && <span className="text-warning font-semibold">{weekendCount} weekend</span>}
                   {lateCount > 0    && <span className="text-danger font-semibold">{lateCount} late</span>}
-                  {missingCount > 0 && <span className="text-ink4 font-semibold">{missingCount} missing</span>}
+                  {missingCount > 0 && <span className="text-danger font-semibold">{missingCount} not submitted</span>}
+                  {pendingCount > 0 && <span className="text-ink4 font-semibold">{pendingCount} pending</span>}
                 </div>
               )}
             </div>
@@ -540,10 +547,12 @@ export default function ReportsPage() {
                 )
               }
               return (
-                <div className="alert alert-amber items-center justify-between">
+                <div className={`alert ${deadlinePassed ? 'alert-red' : 'alert-amber'} items-center justify-between`}>
                   <span className="flex items-center gap-2">
                     <FiAlertTriangle className="w-4 h-4 shrink-0" />
-                    You haven’t filed your report for {fmtWeekLabel(weekMon)} yet.
+                    {deadlinePassed
+                      ? `You haven’t filed your report for ${fmtWeekLabel(weekMon)} — the Friday deadline has passed.`
+                      : `Your report for ${fmtWeekLabel(weekMon)} is pending — due Friday.`}
                   </span>
                   {isCurrentWeek && <a href="/submit" className="btn-primary text-xs py-1 px-3 whitespace-nowrap">Submit now</a>}
                 </div>
@@ -577,7 +586,7 @@ export default function ReportsPage() {
                         key={name}
                         onClick={() => setFilterMember(filterMember === name ? '' : name)}
                         className={`flex items-center gap-1.5 px-2.5 py-1 text-xs font-semibold border transition-colors ${chipClass}`}
-                        title={report ? SUBMIT_STATUS_META[st!].long : 'Not submitted'}
+                        title={report ? SUBMIT_STATUS_META[st!].long : (deadlinePassed ? 'Not submitted' : 'Pending — due Friday')}
                       >
                         {icon && <span>{icon}</span>}
                         <span>{name.split(' ')[0]}</span>
@@ -585,9 +594,9 @@ export default function ReportsPage() {
                     )
                   })}
                 </div>
-                {reportMembers.filter(n => !submittedNames.has(n)).length > 0 && !weekReportsLoading && (
-                  <p className="text-xs text-red-600 mt-2">
-                    Missing: {reportMembers.filter(n => !submittedNames.has(n)).map(n => n.split(' ')[0]).join(', ')}
+                {notFiled.length > 0 && !weekReportsLoading && (
+                  <p className={`text-xs mt-2 ${deadlinePassed ? 'text-red-600' : 'text-ink4'}`}>
+                    {deadlinePassed ? 'Not submitted' : 'Pending (due Friday)'}: {notFiled.map(n => n.split(' ')[0]).join(', ')}
                   </p>
                 )}
               </div>
@@ -756,8 +765,11 @@ export default function ReportsPage() {
           {
             value: loading ? '…' : `${filed.length}/${reportMembers.length}`,
             label: 'Reports Filed',
-            sub: loading ? '' : missing.length ? `Missing: ${missing.map(n => n.split(' ')[0]).join(', ')}` : 'All filed ✓',
-            alert: !loading && missing.length > 0,
+            sub: loading ? '' : !missing.length ? 'All filed ✓'
+              : reportDeadlinePassed(getMostRecentMonday(new Date()))
+                ? `Not submitted: ${missing.map(n => n.split(' ')[0]).join(', ')}`
+                : `Pending (due Friday): ${missing.map(n => n.split(' ')[0]).join(', ')}`,
+            alert: !loading && missing.length > 0 && reportDeadlinePassed(getMostRecentMonday(new Date())),
           },
           {
             value: loading ? '…' : `${clickup?.overduePercent ?? '—'}%`,
@@ -809,6 +821,7 @@ export default function ReportsPage() {
                 didFile={didFile}
                 flow={flow}
                 loading={loading}
+                deadlinePassed={reportDeadlinePassed(getMostRecentMonday(new Date()))}
               />
             )
           })}

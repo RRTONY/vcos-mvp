@@ -14,6 +14,7 @@ import { classifySubmission, SUBMIT_STATUS_META, reportState, type ReportState }
 import { isReportFrom } from '@/lib/report-match'
 import TaskBuckets from '@/components/TaskBuckets'
 import Avatar from '@/components/Avatar'
+import Sparkline from '@/components/Sparkline'
 
 interface TeamMember { name: string; cuKey: string; role: string; filesReport: boolean }
 interface OKR { id: string; label: string; pct: number; note: string }
@@ -173,6 +174,12 @@ export default function DashboardPage() {
   const [screenshots, setScreenshots] = useState<Record<string, { url: string; filename: string; capturedAt: string | null }[]> | null>(null)
   const [loading, setLoading] = useState(true)
   const [team, setTeam] = useState<TeamMember[]>([])
+  // Executive vs PM dashboard mode (admins only). Exec = high-level KPIs/OKRs;
+  // PM = operational task board + screenshots. Persisted per browser.
+  const [view, setView] = useState<'exec' | 'pm'>('exec')
+  useEffect(() => { const v = localStorage.getItem('vcos-dash-view'); if (v === 'pm' || v === 'exec') setView(v) }, [])
+  const chooseView = (v: 'exec' | 'pm') => { setView(v); localStorage.setItem('vcos-dash-view', v) }
+  const [daily, setDaily] = useState<{ overdue_count: number; urgent_count: number; reports_filed: string[] }[]>([])
   const [okrs, setOkrs] = useState<OKR[]>([])
   const [editingOkr, setEditingOkr] = useState<string | null>(null)
   const [okrDraft, setOkrDraft] = useState<{ pct: number; note: string }>({ pct: 0, note: '' })
@@ -183,6 +190,16 @@ export default function DashboardPage() {
   const [selectedMonday, setSelectedMonday] = useState<Date>(() => getMostRecentMonday(new Date()))
   const [weeklyReports, setWeeklyReports] = useState<WeeklyReportEntry[]>([])
   const [reportsLoading, setReportsLoading] = useState(false)
+
+  // Daily history → KPI trend sparklines (admin only; team-wide series).
+  useEffect(() => {
+    if (!isAdmin) return
+    fetch('/api/reports/daily', { cache: 'no-store' }).then(r => r.json()).then(d => setDaily(Array.isArray(d) ? d : [])).catch(() => {})
+  }, [isAdmin])
+  const trendSeries = [...daily].reverse() // oldest → newest
+  const filedTrend = trendSeries.map(d => d.reports_filed?.length ?? 0)
+  const overdueTrend = trendSeries.map(d => d.overdue_count ?? 0)
+  const urgentTrend = trendSeries.map(d => d.urgent_count ?? 0)
 
   useEffect(() => {
     fetch('/api/team', { cache: 'no-store' })
@@ -417,9 +434,19 @@ export default function DashboardPage() {
             />
           </div>
         </div>
-        {!loading && (
-          <ShareSlackButton label="Post Brief" message={shareMsg} />
-        )}
+        <div className="flex items-center gap-2">
+          {isAdmin && (
+            <div className="flex rounded-lg border border-sand4 overflow-hidden text-xs font-semibold">
+              {(['exec', 'pm'] as const).map(v => (
+                <button key={v} onClick={() => chooseView(v)}
+                  className={`px-3 py-1.5 transition-colors ${view === v ? 'bg-accent text-white' : 'bg-sand text-ink3 hover:bg-sand3'}`}>
+                  {v === 'exec' ? 'Executive' : 'PM'}
+                </button>
+              ))}
+            </div>
+          )}
+          {!loading && <ShareSlackButton label="Post Brief" message={shareMsg} />}
+        </div>
       </div>
 
       {/* Tony — chatbot entry */}
@@ -455,6 +482,7 @@ export default function DashboardPage() {
               })()}
             </div>
           )}
+          {isAdmin && filedTrend.length > 1 && <div className="mt-2"><Sparkline values={filedTrend} color="#16A34A" /></div>}
           {!loading && !reportsLoading && displayTotal > 0 && (
             <div className="progress-track mt-2">
               <div
@@ -490,6 +518,7 @@ export default function DashboardPage() {
             </div>
             <div className="stat-label">Urgent Tasks</div>
             <div className="stat-sub">{isAdmin ? 'Need immediate action' : 'Assigned to you'}</div>
+            {isAdmin && urgentTrend.length > 1 && <div className="mt-1"><Sparkline values={urgentTrend} color="#DC2626" height={18} /></div>}
           </div>
           <div className={`stat-tile flex-1 ${loading ? 'animate-pulse' : ''}`}>
             <div className={`stat-value ${!loading && (scopedClickUp?.overduePercent ?? 0) > 50 ? 'text-danger' : 'text-warning'}`}>
@@ -497,6 +526,7 @@ export default function DashboardPage() {
             </div>
             <div className="stat-label">{isAdmin ? 'CRM Overdue' : 'My Overdue'}</div>
             {!loading && scopedClickUp && <div className="stat-sub">{scopedClickUp.overdue} of {scopedClickUp.totalTasks} tasks</div>}
+            {isAdmin && overdueTrend.length > 1 && <div className="mt-1"><Sparkline values={overdueTrend} color="#D97706" height={18} /></div>}
           </div>
         </div>
       </div>
@@ -511,7 +541,8 @@ export default function DashboardPage() {
         ))
       )}
 
-      {/* Team Assignment Board — admins see everyone; others see only their own row */}
+      {/* Team Assignment Board — operational (PM view); non-admins always see their own row */}
+      {(!isAdmin || view === 'pm') && (<>
       <div className="slbl mt-6">{isAdmin ? 'Team Assignment Board' : 'My Tasks'}</div>
       <p className="text-xs text-ink4 mb-3">
         {isAdmin
@@ -536,9 +567,10 @@ export default function DashboardPage() {
           )
         })}
       </div>
+      </>)}
 
-      {/* Team Screenshots */}
-      {screenshots && Object.values(screenshots).some(arr => arr.length > 0) && (
+      {/* Team Screenshots — operational (PM view) */}
+      {(!isAdmin || view === 'pm') && screenshots && Object.values(screenshots).some(arr => arr.length > 0) && (
         <div className="mb-6">
           <div className="slbl">Team Screenshots — Today</div>
           <div className="card divide-y divide-sand3">
@@ -587,7 +619,8 @@ export default function DashboardPage() {
         </div>
       )}
 
-      {/* OKR Pulse */}
+      {/* OKR Pulse — high-level (Exec view) */}
+      {(!isAdmin || view === 'exec') && (<>
       <div className="slbl">OKR Pulse</div>
       <div className="card mb-6 px-5">
         <OkrRings okrs={okrs} />
@@ -635,6 +668,7 @@ export default function DashboardPage() {
           </div>
         )}
       </div>
+      </>)}
 
       {/* Weekly report submissions — who sent / who hasn't (managers see everyone) */}
       {isAdmin && (

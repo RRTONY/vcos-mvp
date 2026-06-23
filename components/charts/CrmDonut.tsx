@@ -1,6 +1,6 @@
 'use client'
 
-import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer } from 'recharts'
+import { PieChart, Pie, Cell, ResponsiveContainer } from 'recharts'
 
 interface Props {
   total: number
@@ -48,10 +48,6 @@ export default function CrmDonut({ total, overdue, urgent, completed }: Props) {
                 <Cell key={d.name} fill={d.color} />
               ))}
             </Pie>
-            <Tooltip
-              formatter={(v) => [`${v} tasks`]}
-              contentStyle={{ fontSize: 12, border: '1px solid #E5E7EB', borderRadius: 6 }}
-            />
           </PieChart>
         </ResponsiveContainer>
         {/* Center label */}

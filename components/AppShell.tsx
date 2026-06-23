@@ -22,7 +22,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
     <>
       <Topbar />
       <NavTabs />
-      <main className="max-w-5xl mx-auto px-4 sm:px-6 pb-16 pt-4">{children}</main>
+      <main className="max-w-5xl mx-auto px-5 sm:px-8 lg:px-12 pb-16 pt-4">{children}</main>
     </>
   )
 }

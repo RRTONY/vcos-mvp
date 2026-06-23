@@ -271,7 +271,7 @@ export default function ChatbotPage() {
   }
 
   return (
-    <div className="flex flex-col px-2 sm:px-5 lg:px-10" style={{ height: 'calc(100vh - 9rem)' }}>
+    <div className="flex flex-col" style={{ height: 'calc(100vh - 9rem)' }}>
       <div className="flex items-center justify-between mt-6 mb-3 gap-3">
         <div className="min-w-0">
           <h1 className="font-display text-2xl tracking-widest">VCoS-AI</h1>

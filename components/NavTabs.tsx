@@ -17,10 +17,13 @@ const TABS = [
 ]
 
 const KICKOFF_TAB = { label: 'Performance', href: '/kickoff' }
+const COMMIT_TAB = { label: 'Commitments', href: '/commitments' }
+const WORKLOAD_TAB = { label: 'Workload', href: '/workload' }
+const STANDUP_TAB = { label: 'Standup Log', href: '/standup' }
+const ESCALATION_TAB = { label: 'Escalations', href: '/escalations' }
 
 const ADMIN_TABS = [
-  { label: 'Users', href: '/settings/users' },
-  { label: 'Team', href: '/settings/team' },
+  { label: 'Team & Users', href: '/settings/people' },
   { label: 'Requests', href: '/settings/requests' },
   { label: 'API Keys', href: '/settings/keys' },
 ]
@@ -29,7 +32,7 @@ export default function NavTabs() {
   const path = usePathname()
   const { isAdmin } = useMe()
 
-  const allTabs = isAdmin ? [...TABS, KICKOFF_TAB, ...ADMIN_TABS] : TABS
+  const allTabs = isAdmin ? [...TABS, KICKOFF_TAB, WORKLOAD_TAB, STANDUP_TAB, ESCALATION_TAB, COMMIT_TAB, ...ADMIN_TABS] : TABS
 
   return (
     <div className="flex border-b border-sand4 bg-sand overflow-x-auto sticky top-16 z-30">
