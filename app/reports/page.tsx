@@ -207,7 +207,7 @@ function getMostRecentMonday(from: Date): Date {
 function fmtWeekLabel(mon: Date): string {
   const fri = new Date(mon)
   fri.setDate(mon.getDate() + 4)
-  const fmt = (d: Date) => d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+  const fmt = (d: Date) => d.toLocaleDateString('en-US', { timeZone: 'America/Los_Angeles', month: 'short', day: 'numeric' })
   return `${fmt(mon)}–${fmt(fri)}`
 }
 
@@ -226,7 +226,7 @@ function WeeklyReportCard({ r, weekMonday, isMine }: { r: WeeklyReportFull; week
   const submittedAt = new Date(r.created_at)
   const status = classifySubmission(r.created_at, weekMonday)
   const meta = SUBMIT_STATUS_META[status]
-  const dateStr = submittedAt.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })
+  const dateStr = submittedAt.toLocaleDateString('en-US', { timeZone: 'America/Los_Angeles', weekday: 'short', month: 'short', day: 'numeric' })
 
   return (
     <div className={`border ${isMine ? 'border-accent/50' : status === 'on-time' ? 'border-sand3' : meta.border}`}>
@@ -538,7 +538,7 @@ export default function ReportsPage() {
               if (mine) {
                 const st = classifySubmission(mine.created_at, weekMon)
                 const alertClass = st === 'on-time' ? 'alert-green' : st === 'weekend' ? 'alert-amber' : 'alert-red'
-                const when = new Date(mine.created_at).toLocaleString('en-US', { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })
+                const when = new Date(mine.created_at).toLocaleString('en-US', { timeZone: 'America/Los_Angeles', weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) + ' PT'
                 return (
                   <div className={`alert ${alertClass}`}>
                     <FiCheck className="w-4 h-4 shrink-0 mt-0.5" />

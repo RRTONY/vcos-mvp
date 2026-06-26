@@ -1,25 +1,55 @@
 // Weekly-report submission timeliness, classified relative to the report's week.
-//   on-time = submitted by end of Friday
-//   weekend = submitted Saturday or Sunday of that same week
+//   on-time = submitted by end of Friday (Pacific Time)
+//   weekend = submitted Saturday or Sunday of that same week (Pacific Time)
 //   late    = submitted the following week or later
 export type SubmitStatus = 'on-time' | 'weekend' | 'late'
 
+// Deadlines are always evaluated in Pacific Time regardless of where the
+// browser or server is running — Friday ends at midnight PT, not IST.
+const REPORT_TZ = 'America/Los_Angeles'
+
+function dateStrInTZ(date: Date, tz: string): string {
+  return new Intl.DateTimeFormat('en-CA', {
+    timeZone: tz, year: 'numeric', month: '2-digit', day: '2-digit',
+  }).format(date)
+}
+
+// Returns a UTC noon Date for weekMonday + dayOffset calendar days.
+// UTC noon (12:00Z) is always the same calendar day in PT (PT is UTC-7/8,
+// so noon UTC = 04/05 AM PT — safely within the same date in PT).
+function weekDayNoonUTC(weekMonday: Date, dayOffset: number): Date {
+  return new Date(Date.UTC(
+    weekMonday.getFullYear(),
+    weekMonday.getMonth(),
+    weekMonday.getDate() + dayOffset,
+    12,
+  ))
+}
+
 export function classifySubmission(createdAt: string | Date, weekMonday: Date): SubmitStatus {
-  const created = new Date(createdAt)
-  const fri = new Date(weekMonday); fri.setDate(weekMonday.getDate() + 4); fri.setHours(23, 59, 59, 999)
-  const sun = new Date(weekMonday); sun.setDate(weekMonday.getDate() + 6); sun.setHours(23, 59, 59, 999)
-  if (created <= fri) return 'on-time'
-  if (created <= sun) return 'weekend'
+  const submittedPT = dateStrInTZ(new Date(createdAt), REPORT_TZ)
+  const friPT = dateStrInTZ(weekDayNoonUTC(weekMonday, 4), REPORT_TZ)
+  const sunPT = dateStrInTZ(weekDayNoonUTC(weekMonday, 6), REPORT_TZ)
+  if (submittedPT <= friPT) return 'on-time'
+  if (submittedPT <= sunPT) return 'weekend'
   return 'late'
 }
 
-// The report for a week is DUE end of Friday of that week.
+// The report for a week is DUE end of Friday Pacific Time.
+// Returns Saturday 07:00 UTC which equals Fri 23:00 PST / Sat 00:00 PDT —
+// i.e., just past the PT end-of-Friday in both winter and summer.
 export function reportDueDate(weekMonday: Date): Date {
-  const fri = new Date(weekMonday); fri.setDate(weekMonday.getDate() + 4); fri.setHours(23, 59, 59, 999)
-  return fri
+  return new Date(Date.UTC(
+    weekMonday.getFullYear(),
+    weekMonday.getMonth(),
+    weekMonday.getDate() + 5,
+    7,
+  ))
 }
 export function reportDeadlinePassed(weekMonday: Date, now: Date = new Date()): boolean {
-  return now.getTime() > reportDueDate(weekMonday).getTime()
+  const nowPT = dateStrInTZ(now, REPORT_TZ)
+  const friPT = dateStrInTZ(weekDayNoonUTC(weekMonday, 4), REPORT_TZ)
+  return nowPT > friPT
 }
 
 // Full state of a member's report for a given week:

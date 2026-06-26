@@ -24,7 +24,7 @@ function getScorecardRange(): { label: string; weeksLabel: string } {
   endFriday.setDate(now.getDate() - daysSinceFriday)
   const startDate = new Date(endFriday)
   startDate.setDate(endFriday.getDate() - (SCORECARD_WEEKS - 1) * 7)
-  const fmt = (d: Date) => d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+  const fmt = (d: Date) => d.toLocaleDateString('en-US', { timeZone: 'America/Los_Angeles', month: 'short', day: 'numeric', year: 'numeric' })
   return {
     label: `${fmt(startDate)} to ${fmt(endFriday)}`,
     weeksLabel: `${SCORECARD_WEEKS} weeks tracked`,
@@ -129,7 +129,7 @@ export default function CompliancePage() {
     })
     setWeekCols(mondays.map(mon => ({
       key: mon.toISOString().slice(0, 10),
-      label: mon.toLocaleDateString('en-US', { month: 'numeric', day: 'numeric' }),
+      label: mon.toLocaleDateString('en-US', { timeZone: 'America/Los_Angeles', month: 'numeric', day: 'numeric' }),
     })))
 
     Promise.all(

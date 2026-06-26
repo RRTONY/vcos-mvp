@@ -691,7 +691,7 @@ export default function DashboardPage() {
                   const rep = getMemberReportEntry(m.name)
                   if (!rep) return null
                   const meta = SUBMIT_STATUS_META[classifySubmission(rep.created_at, selectedMonday)]
-                  const when = new Date(rep.created_at).toLocaleString('en-US', { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })
+                  const when = new Date(rep.created_at).toLocaleString('en-US', { timeZone: 'America/Los_Angeles', weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) + ' PT'
                   return (
                     <div key={m.name} className="flex items-center gap-3 px-5 py-3">
                       <span className={`w-6 h-6 rounded-full ${meta.dot} flex items-center justify-center flex-shrink-0`}><FiCheck className="w-3.5 h-3.5" /></span>

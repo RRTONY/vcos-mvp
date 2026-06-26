@@ -21,7 +21,7 @@ function getCurrentWeekLabel(): string {
   mon.setHours(0, 0, 0, 0)
   const fri = new Date(mon)
   fri.setDate(mon.getDate() + 4)
-  const fmt = (d: Date) => d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+  const fmt = (d: Date) => d.toLocaleDateString('en-US', { timeZone: 'America/Los_Angeles', month: 'short', day: 'numeric' })
   return `${fmt(mon)}–${fmt(fri)}`
 }
 
@@ -31,7 +31,7 @@ function getWeekOptions(count = 8): { value: string; label: string }[] {
   const mon0 = new Date(now)
   mon0.setDate(now.getDate() - ((now.getDay() + 6) % 7))
   mon0.setHours(0, 0, 0, 0)
-  const fmt = (d: Date) => d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+  const fmt = (d: Date) => d.toLocaleDateString('en-US', { timeZone: 'America/Los_Angeles', month: 'short', day: 'numeric' })
   return Array.from({ length: count }, (_, i) => {
     const mon = new Date(mon0)
     mon.setDate(mon0.getDate() - i * 7)

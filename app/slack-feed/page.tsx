@@ -60,7 +60,7 @@ export default function SlackFeedPage() {
                 <div className="flex items-center gap-2 text-xs text-ink4 mb-0.5">
                   <span className="badge !py-0">#{m.channel}</span>
                   <span className="font-semibold text-ink3">{m.user}</span>
-                  <span>· {new Date(m.ts).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}</span>
+                  <span>· {new Date(m.ts).toLocaleString('en-US', { timeZone: 'America/Los_Angeles', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })} PT</span>
                 </div>
                 <div className="text-sm text-ink2 whitespace-pre-wrap break-words">{m.text}</div>
               </div>

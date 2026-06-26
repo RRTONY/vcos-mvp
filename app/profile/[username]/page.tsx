@@ -24,7 +24,7 @@ function mostRecentMonday(from: Date): Date {
 }
 function fmtWeek(mon: Date): string {
   const fri = new Date(mon); fri.setDate(mon.getDate() + 4)
-  const f = (d: Date) => d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+  const f = (d: Date) => d.toLocaleDateString('en-US', { timeZone: 'America/Los_Angeles', month: 'short', day: 'numeric' })
   return `${f(mon)}–${f(fri)}`
 }
 function lookup<T>(map: Record<string, T> | undefined, cuKey: string): T | null {

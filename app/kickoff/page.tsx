@@ -164,7 +164,7 @@ export default function KickoffPage() {
       </div>
       <p className="text-xs text-ink4 mb-4">
         Team performance &amp; exception brief — {submittedCount}/{reportingAudit.length} reports filed.
-        {briefAt && <span> · Brief generated {new Date(briefAt).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}</span>}
+        {briefAt && <span> · Brief generated {new Date(briefAt).toLocaleString('en-US', { timeZone: 'America/Los_Angeles', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })} PT</span>}
       </p>
 
       {/* Tabs */}
@@ -336,7 +336,7 @@ function CompletedTasks({ rows, recentReports }: { rows: MemberAudit[]; recentRe
     <div className="space-y-3">
       {people.map((a, i) => {
         const r = a.latest!
-        const when = new Date(r.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+        const when = new Date(r.created_at).toLocaleDateString('en-US', { timeZone: 'America/Los_Angeles', month: 'short', day: 'numeric' })
         return (
           <details key={a.name} className="card" open={i < 4}>
             <summary className="card-hd cursor-pointer list-none flex items-center gap-2">
