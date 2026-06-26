@@ -69,13 +69,15 @@ export default function TaskBuckets({ tasks }: { tasks: Task[] }) {
     const b = bucketFor(t.dueTs, now)
     if (b) groups[b].push(t); else noDate.push(t)
   }
-  const order: DueBucket[] = ['overdue', 'today', 'week']
+  // Display order: Due Today → Due This Week → Overdue → No Due Date.
+  const order: DueBucket[] = ['today', 'week', 'overdue']
   const anyBucketed = order.some(b => groups[b].length > 0)
+  const firstOpen = order.find(b => groups[b].length > 0) // open the top non-empty bucket
 
   return (
     <>
       {order.map(b => groups[b].length > 0 && (
-        <Accordion key={b} label={DUE_BUCKET_META[b].label} dot={DUE_BUCKET_META[b].dot} text={DUE_BUCKET_META[b].text} tasks={groups[b]} defaultOpen={b === 'overdue'} />
+        <Accordion key={b} label={DUE_BUCKET_META[b].label} dot={DUE_BUCKET_META[b].dot} text={DUE_BUCKET_META[b].text} tasks={groups[b]} defaultOpen={b === firstOpen} />
       ))}
       {noDate.length > 0 && (
         <Accordion label="No Due Date" dot="bg-ink4" text="text-ink3" tasks={noDate} defaultOpen={!anyBucketed} />

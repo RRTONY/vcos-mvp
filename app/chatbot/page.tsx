@@ -57,8 +57,10 @@ function TypingDots() {
   )
 }
 
-// One virtualized chat row. Height is measured automatically by react-window's
-// useDynamicRowHeight, so bubbles can be any size — we just let content flow.
+// One virtualized chat row. react-window's useDynamicRowHeight measures the row
+// element, so we apply react-window's positioning style but let the height be
+// driven by content (height:auto) — this is what keeps variable-height bubbles
+// from clipping/overlapping, even with hundreds of messages.
 function MessageRow({ index, style, messages, userName }: RowComponentProps<{ messages: Msg[]; userName: string }>) {
   const m = messages[index]
   return (

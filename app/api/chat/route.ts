@@ -24,7 +24,7 @@ export async function POST(req: NextRequest) {
 
   const messages = (body.messages ?? [])
     .filter(m => m && (m.role === 'user' || m.role === 'assistant') && typeof m.content === 'string' && m.content.trim())
-    .slice(-20) // keep the last 20 turns for context window hygiene
+    .slice(-10) // low-token: only the last 10 turns go to the model
   if (!messages.length) return NextResponse.json({ error: 'No messages' }, { status: 400 })
 
   const isAdmin = ['admin', 'owner'].includes(role)
@@ -52,8 +52,10 @@ export async function POST(req: NextRequest) {
       let full = ''
       try {
         const ai = client.messages.stream({
-          model: 'claude-sonnet-4-6',
-          max_tokens: 4000,
+          // Low-token: Haiku is far cheaper per token than Sonnet and is plenty
+          // for grounded Q&A + report drafting. Static brain is prompt-cached.
+          model: 'claude-haiku-4-5-20251001',
+          max_tokens: 2000,
           system,
           messages: messages.map(m => ({ role: m.role, content: m.content })),
         })

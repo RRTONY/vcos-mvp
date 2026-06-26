@@ -8,7 +8,7 @@ import type { Task, ClickUpData, SlackData, WebWorkMember } from '@/lib/types'
 import StaleBadge from '@/components/StaleBadge'
 import { useMe } from '@/hooks/useMe'
 import { CLICKUP_WORKSPACE_URL, SLACK_WORKSPACE_URL, SLACK_CHANNEL_WEEKLY_REPORTS, OVERDUE_ALERT_THRESHOLD } from '@/lib/constants'
-import { FiCheck, FiX } from 'react-icons/fi'
+import { FiCheck, FiX, FiClock } from 'react-icons/fi'
 import Spinner from '@/components/Spinner'
 import { classifySubmission, SUBMIT_STATUS_META, reportState, type ReportState } from '@/lib/report-status'
 import { isReportFrom } from '@/lib/report-match'
@@ -701,14 +701,19 @@ export default function DashboardPage() {
                     </div>
                   )
                 })}
-                {/* Not submitted */}
-                {reportingMembers.filter(m => !getMemberReportEntry(m.name)).map(m => (
-                  <div key={m.name} className="flex items-center gap-3 px-5 py-3">
-                    <span className="w-6 h-6 rounded-full bg-danger-light text-danger flex items-center justify-center flex-shrink-0"><FiX className="w-3.5 h-3.5" /></span>
-                    <span className="text-sm font-semibold flex-1 min-w-0 truncate text-ink3">{m.name}</span>
-                    <span className="badge-red">Not submitted</span>
-                  </div>
-                ))}
+                {/* Not yet filed — "Pending" before Friday, "Not submitted" only after */}
+                {reportingMembers.filter(m => !getMemberReportEntry(m.name)).map(m => {
+                  const overdue = getMemberReportStatus(m.name) === 'missing'
+                  return (
+                    <div key={m.name} className="flex items-center gap-3 px-5 py-3">
+                      <span className={`w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0 ${overdue ? 'bg-danger-light text-danger' : 'bg-sand3 text-ink4'}`}>
+                        {overdue ? <FiX className="w-3.5 h-3.5" /> : <FiClock className="w-3.5 h-3.5" />}
+                      </span>
+                      <span className="text-sm font-semibold flex-1 min-w-0 truncate text-ink3">{m.name}</span>
+                      <span className={overdue ? 'badge-red' : 'badge'}>{overdue ? 'Not submitted' : 'Pending'}</span>
+                    </div>
+                  )
+                })}
               </>
             )}
           </div>

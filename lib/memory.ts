@@ -7,7 +7,7 @@ import { getCached, setCache } from './api-cache'
 // Messages auto-expire after 30 days. We prune lazily on every read/write (no
 // cron needed): anything older than the window is dropped and never re-saved.
 export interface StoredMsg { role: 'user' | 'assistant'; content: string; at: string }
-const MAX_STORED = 80
+const MAX_STORED = 500 // keep a long history (virtualized in the UI); 30-day expiry still applies
 const RETENTION_MS = 30 * 24 * 60 * 60 * 1000 // 30 days
 const chatKey = (username: string) => `chat:${username.toLowerCase()}`
 

@@ -21,6 +21,7 @@ const COMMIT_TAB = { label: 'Commitments', href: '/commitments' }
 const WORKLOAD_TAB = { label: 'Workload', href: '/workload' }
 const STANDUP_TAB = { label: 'Standup Log', href: '/standup' }
 const ESCALATION_TAB = { label: 'Escalations', href: '/escalations' }
+const SLACK_TAB = { label: 'Slack Feed', href: '/slack-feed' }
 
 const ADMIN_TABS = [
   { label: 'Team & Users', href: '/settings/people' },
@@ -32,7 +33,7 @@ export default function NavTabs() {
   const path = usePathname()
   const { isAdmin } = useMe()
 
-  const allTabs = isAdmin ? [...TABS, KICKOFF_TAB, WORKLOAD_TAB, STANDUP_TAB, ESCALATION_TAB, COMMIT_TAB, ...ADMIN_TABS] : TABS
+  const allTabs = isAdmin ? [...TABS, KICKOFF_TAB, WORKLOAD_TAB, STANDUP_TAB, ESCALATION_TAB, SLACK_TAB, COMMIT_TAB, ...ADMIN_TABS] : TABS
 
   return (
     <div className="flex border-b border-sand4 bg-sand overflow-x-auto sticky top-16 z-30">

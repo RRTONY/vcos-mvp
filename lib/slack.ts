@@ -51,6 +51,61 @@ export async function conversationsList() {
   })
 }
 
+// ── Phase 3: channel message ingestion ───────────────────────────────────────
+export interface SlackMessage {
+  channel: string       // channel name
+  user: string          // resolved display name
+  text: string
+  ts: string            // ISO time
+  tsMs: number
+}
+
+const MAX_INGEST_CHANNELS = 20
+const PER_CHANNEL = 30
+const INGEST_DAYS = 7
+
+// Pull recent messages from channels the bot is a member of, resolve authors,
+// and return a deduped, time-sorted feed. Stored as the `slack-messages` cache.
+export async function buildSlackMessagesSnapshot(): Promise<{ messages: SlackMessage[]; byChannel: Record<string, number>; channelCount: number }> {
+  const oldest = String(Math.floor((Date.now() - INGEST_DAYS * 86400000) / 1000))
+
+  const [channelsData, usersData] = await Promise.all([conversationsList(), usersList()])
+  const channels: Array<{ id: string; name: string; is_member?: boolean; is_archived?: boolean }> =
+    (channelsData as { channels?: typeof channels }).channels ?? []
+  const users: Array<{ id: string; real_name?: string; name?: string }> =
+    (usersData as { members?: typeof users }).members ?? []
+  const userMap: Record<string, string> = {}
+  for (const u of users) if (u.id) userMap[u.id] = u.real_name ?? u.name ?? 'Unknown'
+
+  const active = channels.filter(c => c.is_member && !c.is_archived).slice(0, MAX_INGEST_CHANNELS)
+
+  const out: SlackMessage[] = []
+  const byChannel: Record<string, number> = {}
+  await Promise.all(active.map(async (c) => {
+    try {
+      const hist = await channelHistory(c.id, oldest, String(PER_CHANNEL))
+      const msgs: Array<{ user?: string; text?: string; ts?: string; subtype?: string; bot_id?: string }> =
+        (hist as { messages?: typeof msgs }).messages ?? []
+      for (const m of msgs) {
+        const text = (m.text ?? '').trim()
+        if (!text || m.subtype === 'channel_join' || m.subtype === 'channel_leave') continue
+        const tsMs = parseFloat(m.ts ?? '0') * 1000
+        out.push({
+          channel: c.name,
+          user: m.user ? (userMap[m.user] ?? 'Unknown') : (m.bot_id ? 'Bot' : 'Unknown'),
+          text: text.length > 400 ? text.slice(0, 400) + '…' : text,
+          ts: new Date(tsMs).toISOString(),
+          tsMs,
+        })
+        byChannel[c.name] = (byChannel[c.name] ?? 0) + 1
+      }
+    } catch { /* skip channels the bot can't read */ }
+  }))
+
+  out.sort((a, b) => b.tsMs - a.tsMs)
+  return { messages: out.slice(0, 200), byChannel, channelCount: active.length }
+}
+
 import { SLACK_CHANNEL_WEEKLY_REPORTS } from '@/lib/constants'
 import { getTeamMembers } from '@/lib/team-db'
 

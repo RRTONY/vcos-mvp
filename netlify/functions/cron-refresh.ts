@@ -11,6 +11,7 @@ import type { Config } from '@netlify/functions'
 const SOURCES = [
   'clickup-tasks',
   'slack-stats',
+  'slack-messages',
   'webwork',
   'fireflies-meetings',
 ] as const
