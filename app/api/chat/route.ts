@@ -34,12 +34,14 @@ export async function POST(req: NextRequest) {
   } catch {
     liveContext = '(Live VCOS data is temporarily unavailable — answer from general knowledge of the team and flag that the data feed is down.)'
   }
-  // Cache the large static brain (identity + commands + rules) so it isn't
-  // reprocessed every turn — faster time-to-first-token and lower cost. The
-  // live data block changes each turn, so it stays uncached.
+  // Two cache points:
+  // 1. SYSTEM_STATIC — fixed per app version, always a cache hit after first call.
+  // 2. Live data block — changes when data changes, but within a 5-min conversation
+  //    the ClickUp/reports data is the same → cache hit on messages 2+ of a session.
+  //    Anthropic's ephemeral cache TTL is 5 min, matching ClickUp's own cache window.
   const system = [
     { type: 'text' as const, text: SYSTEM_STATIC, cache_control: { type: 'ephemeral' as const } },
-    { type: 'text' as const, text: buildLiveBlock(liveContext) },
+    { type: 'text' as const, text: buildLiveBlock(liveContext), cache_control: { type: 'ephemeral' as const } },
   ]
 
   const client = new Anthropic({ apiKey })

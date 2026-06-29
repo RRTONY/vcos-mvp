@@ -41,7 +41,7 @@ async function generateBrief(): Promise<string> {
   const ctx = await buildChatContext('tony', true) // whole-team, admin scope
   const client = new Anthropic({ apiKey })
   const msg = await client.messages.create({
-    model: 'claude-sonnet-4-6',
+    model: 'claude-haiku-4-5-20251001',
     max_tokens: 1500,
     system: [
       { type: 'text' as const, text: SYSTEM_STATIC, cache_control: { type: 'ephemeral' as const } },

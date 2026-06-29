@@ -22,9 +22,8 @@ const SEV_META: Record<Sev, { label: string; badge: string; dot: string; rank: n
   watch: { label: 'Watch', badge: 'badge', dot: 'bg-ink4', rank: 2 },
 }
 
-function mostRecentMonday(from: Date): Date {
-  const d = new Date(from); d.setDate(d.getDate() - ((d.getDay() + 6) % 7)); d.setHours(0, 0, 0, 0); return d
-}
+import { getMondayOfWeekPT, weekStartISO } from '@/lib/week-utils'
+const mostRecentMonday = getMondayOfWeekPT
 const daysSince = (d: string) => Math.floor((Date.now() - new Date(d).getTime()) / 86400000)
 
 export default function EscalationsPage() {
@@ -38,7 +37,7 @@ export default function EscalationsPage() {
 
   useEffect(() => {
     setLoading(true)
-    const monday = mostRecentMonday(new Date()).toISOString().slice(0, 10)
+    const monday = weekStartISO(mostRecentMonday(new Date()))
     Promise.all([
       fetch('/api/clickup-tasks', { cache: 'no-store' }).then(r => r.json()).catch(() => null),
       fetch('/api/team', { cache: 'no-store' }).then(r => r.json()).catch(() => []),

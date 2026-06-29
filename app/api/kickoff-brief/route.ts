@@ -12,9 +12,8 @@ import type { ClickUpData } from '@/lib/types'
 export const dynamic = 'force-dynamic'
 const SOURCE = 'kickoff-brief'
 
-function mostRecentMonday(from: Date): Date {
-  const d = new Date(from); d.setDate(d.getDate() - ((d.getDay() + 6) % 7)); d.setHours(0, 0, 0, 0); return d
-}
+import { getMondayOfWeekPT, fmtWeekRange, weekStartISO, weekLabelVariants } from '@/lib/week-utils'
+const mostRecentMonday = getMondayOfWeekPT
 
 export async function GET() {
   const row = await getCached(SOURCE).catch(() => null)
@@ -29,15 +28,14 @@ export async function POST(req: NextRequest) {
   if (!apiKey) return NextResponse.json({ error: 'ANTHROPIC_API_KEY not configured' }, { status: 500 })
 
   const mon = mostRecentMonday(new Date())
-  const weekStart = mon.toISOString().slice(0, 10)
-  const fri = new Date(mon); fri.setDate(mon.getDate() + 4)
-  const weekLabel = `${mon.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}–${fri.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`
+  const weekStart = weekStartISO(mon)
+  const weekLabel = fmtWeekRange(mon)
 
   const sb = getSupabase()
   const [{ data: reports }, members, cu] = await Promise.all([
     sb.from('weekly_reports')
       .select('submitted_by, created_at, blockers, escalations, priorities, goals_met, win, accomplishments, support_needed')
-      .gte('created_at', mon.toISOString())
+      .in('week_label', weekLabelVariants(mon))
       .order('created_at', { ascending: true }),
     getTeamMembers().catch(() => []),
     getCachedSWR<ClickUpData>('clickup').then(r => r.data).catch(() => null),
@@ -91,8 +89,8 @@ Rules: order the agenda by urgency (fire first). 4-8 agenda items. 1-3 critical,
   try {
     const client = new Anthropic({ apiKey })
     const msg = await client.messages.create({
-      model: 'claude-sonnet-4-6',
-      max_tokens: 3000,
+      model: 'claude-haiku-4-5-20251001',
+      max_tokens: 2000,
       messages: [{ role: 'user', content: prompt }],
     })
     const text = msg.content[0]?.type === 'text' ? msg.content[0].text : ''

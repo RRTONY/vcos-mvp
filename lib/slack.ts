@@ -109,25 +109,11 @@ export async function buildSlackMessagesSnapshot(): Promise<{ messages: SlackMes
 import { SLACK_CHANNEL_WEEKLY_REPORTS } from '@/lib/constants'
 import { getTeamMembers } from '@/lib/team-db'
 
-// Returns Monday of the current/most-recent Mon–Fri work week
-function getMostRecentMonday(from: Date): Date {
-  const d = new Date(from)
-  const jsDay = d.getDay() // Sun=0 Mon=1 … Sat=6
-  const daysSinceMonday = (jsDay + 6) % 7 // Mon=0 Tue=1 … Sun=6
-  d.setDate(d.getDate() - daysSinceMonday)
-  d.setHours(0, 0, 0, 0)
-  return d
-}
+import { getMondayOfWeekPT, fmtWeekRange } from './week-utils'
 
-function weekLabel() {
-  const monday = getMostRecentMonday(new Date())
-  const friday = new Date(monday)
-  friday.setDate(monday.getDate() + 4)
-  const fmt = (d: Date) => d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
-  return `${fmt(monday)}–${fmt(friday)}`
-}
+function getMostRecentMonday(from: Date): Date { return getMondayOfWeekPT(from) }
 
-export { weekLabel }
+export function weekLabel(): string { return fmtWeekRange(getMondayOfWeekPT()) }
 
 function getPostersFromMessages(
   messages: Array<{ user?: string; username?: string; subtype?: string; ts?: string; text?: string }>,

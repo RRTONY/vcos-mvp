@@ -20,21 +20,9 @@ interface TeamMember { name: string; cuKey: string; role: string; filesReport: b
 interface OKR { id: string; label: string; pct: number; note: string }
 interface WeeklyReportEntry { id: string; submitted_by: string; created_at: string }
 
-function getMostRecentMonday(from: Date): Date {
-  const d = new Date(from)
-  const jsDay = d.getDay()
-  const daysSinceMonday = (jsDay + 6) % 7
-  d.setDate(d.getDate() - daysSinceMonday)
-  d.setHours(0, 0, 0, 0)
-  return d
-}
-
-function fmtWeekLabel(mon: Date): string {
-  const fri = new Date(mon)
-  fri.setDate(mon.getDate() + 4)
-  const fmt = (d: Date) => d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
-  return `${fmt(mon)}–${fmt(fri)}`
-}
+import { getMondayOfWeekPT, shiftWeeks, fmtWeekRange, weekStartISO } from '@/lib/week-utils'
+const getMostRecentMonday = getMondayOfWeekPT
+const fmtWeekLabel = fmtWeekRange
 import dynamic from 'next/dynamic'
 const CrmDonut = dynamic(() => import('@/components/charts/CrmDonut'), { ssr: false })
 const OkrRings = dynamic(() => import('@/components/charts/OkrRing'), { ssr: false })
@@ -266,7 +254,7 @@ export default function DashboardPage() {
 
   useEffect(() => {
     setReportsLoading(true)
-    const weekStart = selectedMonday.toISOString().slice(0, 10)
+    const weekStart = weekStartISO(selectedMonday)
     fetch(`/api/weekly-reports?week_start=${weekStart}`, { cache: 'no-store' })
       .then(r => r.json())
       .then((data: WeeklyReportEntry[]) => {
@@ -411,13 +399,13 @@ export default function DashboardPage() {
           <h1 className="font-display text-2xl tracking-widest">CEO COMMAND</h1>
           <div className="flex items-center gap-1 mt-0.5 flex-wrap">
             <button
-              onClick={() => setSelectedMonday(d => { const n = new Date(d); n.setDate(n.getDate() - 7); return n })}
+              onClick={() => setSelectedMonday(d => shiftWeeks(d, -1))}
               className="text-ink4 hover:text-ink text-lg w-7 h-7 flex items-center justify-center rounded hover:bg-sand3 transition-colors"
               title="Previous week"
             >‹</button>
             <span className="text-xs text-ink4 px-1">Week of {selectedWeekLabel}</span>
             <button
-              onClick={() => setSelectedMonday(d => { const n = new Date(d); n.setDate(n.getDate() + 7); return n })}
+              onClick={() => setSelectedMonday(d => shiftWeeks(d, 1))}
               disabled={isCurrentWeek}
               className="text-ink4 hover:text-ink text-lg w-7 h-7 flex items-center justify-center rounded hover:bg-sand3 transition-colors disabled:opacity-30"
               title="Next week"
@@ -551,7 +539,11 @@ export default function DashboardPage() {
       </p>
       <div className="space-y-2 mb-6">
         {(isAdmin ? team : team.filter(m => me?.fullName && m.name === me.fullName)).map((member) => {
-          const wwMember = webwork?.members?.find((m) => m.username === member.cuKey)
+          const wwMember = webwork?.members?.find((m) => {
+            const u = m.username.toLowerCase()
+            const k = member.cuKey.toLowerCase()
+            return u.includes(k) || k.includes(u)
+          })
           return (
             <MemberCard
               key={member.name}

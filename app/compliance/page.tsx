@@ -31,12 +31,8 @@ function getScorecardRange(): { label: string; weeksLabel: string } {
   }
 }
 
-function mostRecentMonday(from: Date): Date {
-  const d = new Date(from)
-  d.setDate(d.getDate() - ((d.getDay() + 6) % 7))
-  d.setHours(0, 0, 0, 0)
-  return d
-}
+import { getMondayOfWeekPT, shiftWeeks, weekStartISO } from '@/lib/week-utils'
+const mostRecentMonday = getMondayOfWeekPT
 
 const BT_ITEMS: { key: keyof CheckState; label: string }[] = [
   { key: 'invoiceSubmitted',    label: 'Braintrust invoice submitted this period?' },
@@ -122,19 +118,17 @@ export default function CompliancePage() {
   // in agreement. We fetch the full SCORECARD_WEEKS history (oldest → newest).
   useEffect(() => {
     const curMon = mostRecentMonday(new Date())
-    const mondays = Array.from({ length: SCORECARD_WEEKS }, (_, i) => {
-      const mon = new Date(curMon)
-      mon.setDate(curMon.getDate() - (SCORECARD_WEEKS - 1 - i) * 7)
-      return mon
-    })
+    const mondays = Array.from({ length: SCORECARD_WEEKS }, (_, i) =>
+      shiftWeeks(curMon, -(SCORECARD_WEEKS - 1 - i))
+    )
     setWeekCols(mondays.map(mon => ({
-      key: mon.toISOString().slice(0, 10),
+      key: weekStartISO(mon),
       label: mon.toLocaleDateString('en-US', { timeZone: 'America/Los_Angeles', month: 'numeric', day: 'numeric' }),
     })))
 
     Promise.all(
       mondays.map(mon =>
-        fetch(`/api/weekly-reports?week_start=${mon.toISOString().slice(0, 10)}`, { cache: 'no-store' })
+        fetch(`/api/weekly-reports?week_start=${weekStartISO(mon)}`, { cache: 'no-store' })
           .then(r => r.json())
           .catch(() => [])
       )

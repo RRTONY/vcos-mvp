@@ -6,9 +6,10 @@ import { buildSlackSnapshot } from '@/lib/slack'
 import { buildWebWorkSnapshot } from '@/lib/webwork'
 import { buildFirefliesSnapshot } from '@/lib/fireflies'
 import { SLACK_CHANNEL_WEEKLY_REPORTS, SLACK_ADMIN_CHANNEL } from '@/lib/constants'
+import { todayPT } from '@/lib/week-utils'
 
 async function generateDailyReport() {
-  const today = new Date().toISOString().slice(0, 10)
+  const today = todayPT()
   const baseUrl = process.env.ALLOWED_ORIGIN?.replace(/\/$/, '') ?? 'http://localhost:3000'
 
   // Fetch all sources in parallel using snapshot builders + systems status

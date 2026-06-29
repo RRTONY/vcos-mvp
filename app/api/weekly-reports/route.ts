@@ -3,6 +3,7 @@ import Anthropic from '@anthropic-ai/sdk'
 import { postMessage } from '@/lib/slack'
 import { getSupabase } from '@/lib/supabase'
 import { getTeamMemberByUsername } from '@/lib/team-db'
+import { parseWeekStart, fmtWeekRange, weekLabelVariants } from '@/lib/week-utils'
 
 import { SLACK_CHANNEL_WEEKLY_REPORTS } from '@/lib/constants'
 const SLACK_CHANNEL = process.env.SLACK_CHANNEL_WEEKLY_REPORTS ?? SLACK_CHANNEL_WEEKLY_REPORTS
@@ -130,8 +131,11 @@ export async function POST(req: NextRequest) {
 
   const slackMsg = lines.join('\n')
 
+  const contentFields = [body.blockers, body.escalations, body.priorities, body.goals_met, body.win, body.accomplishments, body.friction, body.went_well, body.support_needed]
+  const hasContent = contentFields.some(f => f && f.trim().length > 0)
+
   const [analysisResult, slackResult] = await Promise.allSettled([
-    analyzeReport(body),
+    hasContent ? analyzeReport(body) : Promise.resolve(null),
     postMessage(SLACK_CHANNEL, slackMsg),
   ])
 
@@ -191,11 +195,10 @@ export async function GET(req: NextRequest) {
   if (ownName) query = query.eq('submitted_by', ownName)
 
   if (weekStart) {
-    const from = new Date(weekStart)
-    from.setUTCHours(0, 0, 0, 0)
-    const to = new Date(from)
-    to.setUTCDate(to.getUTCDate() + 10) // Mon → Wed+1 of following week, catches late submissions
-    query = query.gte('created_at', from.toISOString()).lte('created_at', to.toISOString())
+    // Use both the correct PT label and the IST-shifted variant (1 day earlier).
+    // Old reports from IST users stored labels 1 day back due to the midnight-IST bug.
+    const labels = weekLabelVariants(parseWeekStart(weekStart))
+    query = query.in('week_label', labels)
   }
 
   const { data } = await query

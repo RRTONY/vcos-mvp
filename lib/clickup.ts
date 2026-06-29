@@ -1,4 +1,4 @@
-import { CLICKUP_WORKSPACE_ID, PRIORITY_URGENT, PRIORITY_HIGH } from '@/lib/constants'
+import { CLICKUP_WORKSPACE_ID, PRIORITY_URGENT, PRIORITY_HIGH, CLICKUP_EXCLUDED_FOLDER_IDS, CLICKUP_EXCLUDED_LIST_IDS } from '@/lib/constants'
 
 const BASE = 'https://api.clickup.com/api/v2'
 
@@ -10,8 +10,13 @@ interface CUTask {
   status?: { status?: string; type?: string }
   priority?: { id?: string; priority?: string }
   list?: { id: string; name: string }
-  folder?: { name: string }
+  folder?: { id?: string; name?: string }
   assignees?: Array<{ username?: string; email?: string; id?: string; profilePicture?: string | null; initials?: string; color?: string }>
+}
+
+function isExcluded(t: CUTask): boolean {
+  return (!!t.folder?.id && CLICKUP_EXCLUDED_FOLDER_IDS.includes(t.folder.id))
+    || (!!t.list?.id && CLICKUP_EXCLUDED_LIST_IDS.includes(t.list.id))
 }
 
 function taskDetail(t: CUTask) {
@@ -137,7 +142,9 @@ export async function getTeamTasks(teamId: string) {
     }
   }
 
-  return { tasks: allTasks }
+  // Drop tasks from excluded legacy/archive folders+lists before they ever
+  // reach a consumer — keeps them out of stats, overdue counts, and AI context.
+  return { tasks: allTasks.filter(t => !isExcluded(t)) }
 }
 
 export async function pingUser() {

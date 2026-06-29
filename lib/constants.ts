@@ -9,6 +9,12 @@ export const SLACK_WORKSPACE_URL          = 'https://app.slack.com/client/T08K6K
 
 export const CLICKUP_INVOICE_LIST_ID = '901113518927'
 
+// Folders/lists excluded from every ClickUp task view (dashboard, reports, AI
+// context). "Legacy Archive" folder and its "Archived tasks" list — old work
+// that shouldn't count toward anyone's active task load or overdue stats.
+export const CLICKUP_EXCLUDED_FOLDER_IDS = ['90118089652']
+export const CLICKUP_EXCLUDED_LIST_IDS   = ['90110269512', '901114020411', '901114023521']
+
 // ClickUp priority IDs (from ClickUp API)
 export const PRIORITY_URGENT = '1'
 export const PRIORITY_HIGH   = '2'

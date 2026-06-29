@@ -11,6 +11,7 @@ import { CLICKUP_WORKSPACE_URL } from '@/lib/constants'
 import StaleBadge from '@/components/StaleBadge'
 import MeetingTimeline from '@/components/MeetingTimeline'
 import WeekCalendar from '@/components/WeekCalendar'
+import DayCalendar from '@/components/DayCalendar'
 import { FiCheck, FiAlertTriangle } from 'react-icons/fi'
 import Spinner from '@/components/Spinner'
 import { classifySubmission, SUBMIT_STATUS_META, reportDeadlinePassed, type SubmitStatus } from '@/lib/report-status'
@@ -195,20 +196,19 @@ interface WeeklyReportFull {
   ai_analysis: { summary: string; insights: string[]; actions: string[] } | null
 }
 
-function getMostRecentMonday(from: Date): Date {
-  const d = new Date(from)
-  const jsDay = d.getDay()
-  const daysSinceMonday = (jsDay + 6) % 7
-  d.setDate(d.getDate() - daysSinceMonday)
-  d.setHours(0, 0, 0, 0)
-  return d
-}
+import { getMondayOfWeekPT, shiftWeeks, fmtWeekRange, weekStartISO, todayPT } from '@/lib/week-utils'
+const getMostRecentMonday = getMondayOfWeekPT
+const fmtWeekLabel = fmtWeekRange
 
-function fmtWeekLabel(mon: Date): string {
-  const fri = new Date(mon)
-  fri.setDate(mon.getDate() + 4)
-  const fmt = (d: Date) => d.toLocaleDateString('en-US', { timeZone: 'America/Los_Angeles', month: 'short', day: 'numeric' })
-  return `${fmt(mon)}–${fmt(fri)}`
+function hoursForMember(report: DailyReport | null, member: TeamMember): number | null {
+  if (!report?.team_hours) return null
+  const key = member.cuKey.toLowerCase()
+  const firstName = member.name.split(' ')[0].toLowerCase()
+  const entry = Object.entries(report.team_hours).find(([uname]) => {
+    const u = uname.toLowerCase()
+    return u.includes(key) || key.includes(u) || u.includes(firstName) || firstName.includes(u)
+  })
+  return entry ? entry[1] : null
 }
 
 function ReportField({ label, value }: { label: string; value: string | null }) {
@@ -313,6 +313,9 @@ export default function ReportsPage() {
   const { isAdmin, me } = useMe()
   const [dailyHistory, setDailyHistory] = useState<DailyReport[]>([])
   const [dailyLoading, setDailyLoading] = useState(false)
+  const [selectedDailyDate, setSelectedDailyDate] = useState<string>(() => todayPT())
+  const [selectedDailyReport, setSelectedDailyReport] = useState<DailyReport | null>(null)
+  const [selectedDailyLoading, setSelectedDailyLoading] = useState(false)
   const [generatingReport, setGeneratingReport] = useState(false)
   const [weekMon, setWeekMon] = useState<Date>(() => getMostRecentMonday(new Date()))
   const [weekReports, setWeekReports] = useState<WeeklyReportFull[]>([])
@@ -373,7 +376,7 @@ export default function ReportsPage() {
 
   async function fetchSubmittedForWeek(mon: Date) {
     setWeekReportsLoading(true)
-    const weekStart = mon.toISOString().slice(0, 10)
+    const weekStart = weekStartISO(mon)
     const res = await fetch(`/api/weekly-reports?week_start=${weekStart}`, { cache: 'no-store' }).then(r => r.json()).catch(() => [])
     setWeekReports(Array.isArray(res) ? res : [])
     setWeekReportsLoading(false)
@@ -383,6 +386,7 @@ export default function ReportsPage() {
     setGeneratingReport(true)
     await fetch('/api/reports/daily', { method: 'POST' })
     await fetchDailyHistory()
+    setSelectedDailyDate(todayPT())
     setGeneratingReport(false)
   }
 
@@ -398,6 +402,22 @@ export default function ReportsPage() {
     if (tab === 'submitted') fetchSubmittedForWeek(weekMon)
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tab])
+
+  // Resolve the report for the calendar-selected day: use the already-fetched
+  // history if it's in the last 30 days, otherwise fetch that single date.
+  useEffect(() => {
+    if (tab !== 'daily') return
+    const cached = dailyHistory.find(r => r.report_date === selectedDailyDate)
+    if (cached) { setSelectedDailyReport(cached); setSelectedDailyLoading(false); return }
+    if (dailyLoading) return
+    setSelectedDailyLoading(true)
+    fetch(`/api/reports/daily?date=${selectedDailyDate}`)
+      .then(r => r.json())
+      .then(res => setSelectedDailyReport(res ?? null))
+      .catch(() => setSelectedDailyReport(null))
+      .finally(() => setSelectedDailyLoading(false))
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tab, selectedDailyDate, dailyHistory, dailyLoading])
 
   useEffect(() => {
     if (tab === 'submitted') fetchSubmittedForWeek(weekMon)
@@ -501,13 +521,13 @@ export default function ReportsPage() {
             {/* Week navigation */}
             <div className="flex flex-wrap items-center gap-x-1 gap-y-2">
               <button
-                onClick={() => setWeekMon(d => { const n = new Date(d); n.setDate(n.getDate() - 7); return n })}
+                onClick={() => setWeekMon(d => shiftWeeks(d, -1))}
                 className="text-ink4 hover:text-ink text-xl w-8 h-8 flex items-center justify-center rounded hover:bg-sand3 transition-colors"
                 title="Previous week"
               >‹</button>
               <span className="text-sm font-semibold tabular-nums">{fmtWeekLabel(weekMon)}</span>
               <button
-                onClick={() => setWeekMon(d => { const n = new Date(d); n.setDate(n.getDate() + 7); return n })}
+                onClick={() => setWeekMon(d => shiftWeeks(d, 1))}
                 disabled={isCurrentWeek}
                 className="text-ink4 hover:text-ink text-xl w-8 h-8 flex items-center justify-center rounded hover:bg-sand3 transition-colors disabled:opacity-30"
                 title="Next week"
@@ -646,40 +666,79 @@ export default function ReportsPage() {
       })()}
 
       {/* ── DAILY HISTORY TAB ────────────────────────────────── */}
-      {tab === 'daily' && (
-        <div className="space-y-3">
-          {dailyLoading ? (
-            <div className="text-ink4 text-sm animate-pulse">Loading history…</div>
-          ) : dailyHistory.length === 0 ? (
-            <div className="card p-6 text-center text-ink4 text-sm">
-              No daily reports yet.{isAdmin && ' Click "Generate Now" to create today\'s report.'}
+      {tab === 'daily' && (() => {
+        const reportedDates = new Set(dailyHistory.map(r => r.report_date))
+        const r = selectedDailyReport
+        const isToday = selectedDailyDate === todayPT()
+        const dateLabel = (iso: string, opts: Intl.DateTimeFormatOptions) =>
+          new Date(`${iso}T12:00:00Z`).toLocaleDateString('en-US', { timeZone: 'America/Los_Angeles', ...opts })
+
+        return (
+          <div className="space-y-4">
+            <div className="flex flex-wrap items-center gap-2">
+              <DayCalendar selectedDate={selectedDailyDate} onSelectDate={setSelectedDailyDate} markedDates={reportedDates} />
+              {!isToday && (
+                <button onClick={() => setSelectedDailyDate(todayPT())} className="text-xs text-accent hover:underline">
+                  Jump to today
+                </button>
+              )}
             </div>
-          ) : (
-            dailyHistory.map(r => (
-              <div key={r.report_date} className="card divide-y divide-sand3">
-                <div className="flex items-center justify-between px-4 py-3">
-                  <span className="font-bold text-sm">{new Date(r.report_date + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' })}</span>
-                  <div className="flex gap-4 text-xs text-ink3">
-                    <span>✅ {r.reports_filed?.length ?? 0} filed</span>
-                    {(r.reports_missing?.length ?? 0) > 0 && <span className="text-red-600">❌ {r.reports_missing.length} missing</span>}
-                    <span>{r.overdue_count} overdue</span>
-                    <span>{r.urgent_count} urgent</span>
+
+            {selectedDailyLoading || (dailyLoading && !r) ? (
+              <div className="text-ink4 text-sm animate-pulse">Loading report…</div>
+            ) : !r ? (
+              <div className="card p-6 text-center text-ink4 text-sm">
+                No daily report for {dateLabel(selectedDailyDate, { weekday: 'long', month: 'short', day: 'numeric' })}.
+                {isAdmin && isToday && ' Click "Generate Now" to create it.'}
+              </div>
+            ) : (
+              <>
+                <div className="card divide-y divide-sand3">
+                  <div className="flex items-center justify-between px-4 py-3">
+                    <span className="font-bold text-sm">{dateLabel(r.report_date, { weekday: 'long', month: 'long', day: 'numeric' })}</span>
+                    <div className="flex gap-4 text-xs text-ink3">
+                      <span>✅ {r.reports_filed?.length ?? 0} filed</span>
+                      {(r.reports_missing?.length ?? 0) > 0 && <span className="text-red-600">❌ {r.reports_missing.length} missing</span>}
+                      <span>{r.overdue_count} overdue</span>
+                      <span>{r.urgent_count} urgent</span>
+                    </div>
                   </div>
                 </div>
-                {r.team_hours && Object.keys(r.team_hours).length > 0 && (
-                  <div className="px-4 py-2 flex flex-wrap gap-3">
-                    {Object.entries(r.team_hours).map(([name, hrs]) => (
-                      <span key={name} className="text-xs text-ink3">
-                        <span className="font-semibold capitalize">{name}</span> {hrs}h
-                      </span>
-                    ))}
-                  </div>
-                )}
-              </div>
-            ))
-          )}
-        </div>
-      )}
+
+                <div className="slbl">All Team Members</div>
+                <div className="card divide-y divide-sand3">
+                  {team.map(member => {
+                    const filed = r.reports_filed?.includes(member.name)
+                    const missing = r.reports_missing?.includes(member.name)
+                    const hrs = hoursForMember(r, member)
+                    const status: 'exempt' | 'filed' | 'missing' | 'unknown' =
+                      !member.filesReport ? 'exempt' : filed ? 'filed' : missing ? 'missing' : 'unknown'
+                    return (
+                      <div key={member.name} className="flex items-center gap-3 px-4 py-3">
+                        <div className="w-7 h-7 flex items-center justify-center text-xs font-bold flex-shrink-0 bg-sand2 text-ink">
+                          {member.name[0]}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <span className="text-sm font-semibold">{member.name}</span>
+                          {member.role && <span className="text-xs text-ink4 ml-2">{member.role}</span>}
+                        </div>
+                        {hrs != null && <span className="text-xs font-mono text-ink3">{hrs}h</span>}
+                        <span className={`text-[10px] font-bold ${
+                          status === 'filed' ? 'text-green-700'
+                          : status === 'missing' ? 'text-red-600'
+                          : 'text-ink4'
+                        }`}>
+                          {status === 'filed' ? '● Filed' : status === 'missing' ? '✕ Missing' : status === 'exempt' ? 'Exempt' : '— No data'}
+                        </span>
+                      </div>
+                    )
+                  })}
+                </div>
+              </>
+            )}
+          </div>
+        )
+      })()}
 
       {/* ── TEAM HOURS TAB ───────────────────────────────────── */}
       {tab === 'hours' && (

@@ -10,9 +10,8 @@ import { loadGoals, loadCommitments } from './memory'
 import type { SlackMessage } from './slack'
 import type { ClickUpData, Task, Meeting, WebWorkMember } from './types'
 
-function mostRecentMonday(from: Date): Date {
-  const d = new Date(from); d.setDate(d.getDate() - ((d.getDay() + 6) % 7)); d.setHours(0, 0, 0, 0); return d
-}
+import { getMondayOfWeekPT, fmtWeekRange, weekLabelVariants } from './week-utils'
+const mostRecentMonday = getMondayOfWeekPT
 function fmtDate(d: Date): string {
   return d.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })
 }
@@ -34,11 +33,7 @@ interface ReportRow { submitted_by: string; created_at: string; win?: string | n
 export async function buildChatContext(username: string, isAdmin: boolean): Promise<string> {
   const now = new Date()
   const mon = mostRecentMonday(now)
-  const weekLabel = (() => {
-    const fri = new Date(mon); fri.setDate(mon.getDate() + 4)
-    const f = (d: Date) => d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
-    return `${f(mon)}–${f(fri)}`
-  })()
+  const weekLabel = fmtWeekRange(mon)
 
   const sb = getSupabase()
   const [members, cu, reportsRes, me, goals, commitments, ff, ww, slackMsgs] = await Promise.all([
@@ -48,7 +43,7 @@ export async function buildChatContext(username: string, isAdmin: boolean): Prom
       try {
         const { data } = await sb.from('weekly_reports')
           .select('submitted_by, created_at, win, accomplishments, priorities, blockers, support_needed')
-          .gte('created_at', mon.toISOString())
+          .in('week_label', weekLabelVariants(mon))
           .order('created_at', { ascending: true })
         return (data as ReportRow[] | null) ?? null
       } catch { return null }
@@ -99,7 +94,7 @@ export async function buildChatContext(username: string, isAdmin: boolean): Prom
     const today = now.toISOString().slice(0, 10)
     const overdue = openCommit.filter(c => c.due && c.due < today)
     lines.push(`## COMMITMENTS & DECISIONS LOG (${openCommit.length} open${overdue.length ? `, ${overdue.length} OVERDUE` : ''}) — proactively surface overdue items`)
-    for (const c of openCommit.slice(0, 15)) {
+    for (const c of openCommit.slice(0, 8)) {
       const od = c.due && c.due < today ? ' ⚠️OVERDUE' : ''
       lines.push(`  - [${c.type}] ${c.text}${c.owner ? ` (owner: ${c.owner})` : ''}${c.due ? ` (due ${c.due})` : ''}${od}`)
     }
@@ -144,7 +139,7 @@ export async function buildChatContext(username: string, isAdmin: boolean): Prom
     }
     const topLoops = [...tasks]
       .sort((a, b) => (a.priority === 'urgent' ? 0 : 1) - (b.priority === 'urgent' ? 0 : 1) || (a.dueTs ?? Infinity) - (b.dueTs ?? Infinity))
-      .slice(0, 5)
+      .slice(0, 3)
     if (topLoops.length) {
       lines.push(`  - Open loops (top ${topLoops.length}${tasks.length > 5 ? ` of ${tasks.length}` : ''}):`)
       topLoops.forEach(t => lines.push(loopLine(t)))
@@ -167,11 +162,11 @@ export async function buildChatContext(username: string, isAdmin: boolean): Prom
   }
   if (meetings.length) {
     lines.push(`## RECENT MEETINGS (Fireflies) — use for /prep and context`)
-    for (const mt of meetings.slice(0, 4)) {
-      lines.push(`### ${mt.title} — ${mt.date}${mt.duration ? ` (${mt.duration})` : ''}`)
-      if (mt.participants?.length) lines.push(`  - Participants: ${mt.participants.slice(0, 8).join(', ')}`)
-      if (mt.overview) lines.push(`  - Overview: ${mt.overview.replace(/\s+/g, ' ').slice(0, 240)}`)
-      if (mt.actionItems) lines.push(`  - Action items: ${mt.actionItems.replace(/\s+/g, ' ').slice(0, 240)}`)
+    for (const mt of meetings.slice(0, 3)) {
+      lines.push(`### ${mt.title} — ${mt.date}`)
+      if (mt.participants?.length) lines.push(`  - Participants: ${mt.participants.slice(0, 5).join(', ')}`)
+      if (mt.overview) lines.push(`  - Overview: ${mt.overview.replace(/\s+/g, ' ').slice(0, 150)}`)
+      if (mt.actionItems) lines.push(`  - Actions: ${mt.actionItems.replace(/\s+/g, ' ').slice(0, 150)}`)
     }
     lines.push('')
   }
@@ -179,9 +174,9 @@ export async function buildChatContext(username: string, isAdmin: boolean): Prom
   // ── Recent Slack activity (admins) ──
   if (isAdmin && slackMsgs.length) {
     lines.push(`## RECENT SLACK ACTIVITY (last messages across channels)`)
-    for (const m of slackMsgs.slice(0, 10)) {
+    for (const m of slackMsgs.slice(0, 5)) {
       const when = new Date(m.ts).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
-      lines.push(`  - [#${m.channel}] ${m.user} (${when}): ${m.text.replace(/\s+/g, ' ').slice(0, 120)}`)
+      lines.push(`  - [#${m.channel}] ${m.user} (${when}): ${m.text.replace(/\s+/g, ' ').slice(0, 80)}`)
     }
     lines.push('')
   }

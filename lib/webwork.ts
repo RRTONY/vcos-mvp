@@ -1,4 +1,5 @@
 import { getTeamMembers } from './team-db'
+import { getMondayOfWeekPT, shiftWeeks, weekStartISO } from './week-utils'
 
 const BASE = 'https://api.webwork-tracker.com/api/v2'
 
@@ -70,28 +71,21 @@ export async function buildWebWorkSnapshot() {
   return { week: weekDates, lastWeek: lastWeekDates, members: results }
 }
 
-// Returns Mon–Sun dates for the current week
-export function getCurrentWeekDates(): string[] {
-  const today = new Date()
-  const day = today.getDay() // 0=Sun
-  const monday = new Date(today)
-  monday.setDate(today.getDate() - (day === 0 ? 6 : day - 1))
+// Returns Mon–Sun PT-calendar dates for the current week. Anchored to PT (not
+// server/browser local time) so this agrees with week-utils everywhere, including
+// on IST dev machines where local getDay()/setDate() + toISOString() (UTC) can disagree.
+function weekDatesFrom(monday: Date): string[] {
   return Array.from({ length: 7 }, (_, i) => {
-    const d = new Date(monday)
-    d.setDate(monday.getDate() + i)
-    return d.toISOString().slice(0, 10)
+    const d = new Date(Date.UTC(monday.getUTCFullYear(), monday.getUTCMonth(), monday.getUTCDate() + i, 12))
+    return weekStartISO(d)
   })
 }
 
-// Returns Mon–Sun dates for the previous week
+export function getCurrentWeekDates(): string[] {
+  return weekDatesFrom(getMondayOfWeekPT())
+}
+
+// Returns Mon–Sun PT-calendar dates for the previous week
 export function getLastWeekDates(): string[] {
-  const today = new Date()
-  const day = today.getDay()
-  const monday = new Date(today)
-  monday.setDate(today.getDate() - (day === 0 ? 6 : day - 1) - 7)
-  return Array.from({ length: 7 }, (_, i) => {
-    const d = new Date(monday)
-    d.setDate(monday.getDate() + i)
-    return d.toISOString().slice(0, 10)
-  })
+  return weekDatesFrom(shiftWeeks(getMondayOfWeekPT(), -1))
 }

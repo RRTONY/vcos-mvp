@@ -6,6 +6,7 @@ import { useRefresh } from './RefreshContext'
 import { useMe } from '@/hooks/useMe'
 import { RAMPRATE_LOGO_B64 } from '@/lib/logo'
 import { FiAlertTriangle, FiArrowRight, FiRefreshCw } from 'react-icons/fi'
+import { getMondayOfWeekPT, weekStartISO } from '@/lib/week-utils'
 
 export default function Topbar() {
   const { me } = useMe()
@@ -22,10 +23,7 @@ export default function Topbar() {
   // Personal nudge: does this user still owe a weekly report for the current week?
   useEffect(() => {
     if (!me?.filesReport || !me.fullName) { setNeedsReport(false); return }
-    const mon = new Date()
-    mon.setDate(mon.getDate() - ((mon.getDay() + 6) % 7))
-    mon.setHours(0, 0, 0, 0)
-    const weekStart = mon.toISOString().slice(0, 10)
+    const weekStart = weekStartISO(getMondayOfWeekPT())
     fetch(`/api/weekly-reports?week_start=${weekStart}`, { cache: 'no-store' })
       .then(r => r.json())
       .then((data: { submitted_by: string }[]) => {

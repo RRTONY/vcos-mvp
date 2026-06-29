@@ -2,31 +2,29 @@
 
 import { useState, useRef, useEffect } from 'react'
 import { FiCalendar, FiChevronLeft, FiChevronRight } from 'react-icons/fi'
-import { getMondayOfWeekPT, fmtWeekRange } from '@/lib/week-utils'
-
-const mostRecentMonday = getMondayOfWeekPT
-export const fmtWeek = fmtWeekRange
+import { ptDateISO, todayPT } from '@/lib/week-utils'
 
 const WEEKDAYS = ['M', 'T', 'W', 'T', 'F', 'S', 'S']
 const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December']
 
 /**
- * Calendar popover for picking a week. Clicking any day selects the Monday of
- * that week. All past and future weeks are selectable. The trigger shows the
- * selected week label — clicking it (or the input area) opens the calendar.
+ * Calendar popover for picking a single date (PT calendar). Used to look up a
+ * specific day's report instead of paging through a flat history list.
  */
-export default function WeekCalendar({
-  selectedMonday,
-  onSelectWeek,
+export default function DayCalendar({
+  selectedDate,
+  onSelectDate,
+  markedDates,
 }: {
-  selectedMonday: Date
-  onSelectWeek: (monday: Date) => void
+  selectedDate: string // YYYY-MM-DD (PT)
+  onSelectDate: (date: string) => void
+  markedDates?: Set<string> // dates that have a report — shown with a dot
 }) {
   const [open, setOpen] = useState(false)
-  const [viewMonth, setViewMonth] = useState(() => new Date(Date.UTC(selectedMonday.getUTCFullYear(), selectedMonday.getUTCMonth(), 1, 12)))
+  const sel = new Date(`${selectedDate}T12:00:00Z`)
+  const [viewMonth, setViewMonth] = useState(() => new Date(Date.UTC(sel.getUTCFullYear(), sel.getUTCMonth(), 1, 12)))
   const ref = useRef<HTMLDivElement>(null)
 
-  // Close on outside click / Escape
   useEffect(() => {
     if (!open) return
     function onDoc(e: MouseEvent) {
@@ -38,47 +36,45 @@ export default function WeekCalendar({
     return () => { document.removeEventListener('mousedown', onDoc); document.removeEventListener('keydown', onKey) }
   }, [open])
 
-  // When opening, jump the view to the selected week's month
   useEffect(() => {
-    if (open) setViewMonth(new Date(Date.UTC(selectedMonday.getUTCFullYear(), selectedMonday.getUTCMonth(), 1, 12)))
-  }, [open, selectedMonday])
+    if (open) setViewMonth(new Date(Date.UTC(sel.getUTCFullYear(), sel.getUTCMonth(), 1, 12)))
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, selectedDate])
 
-  const currentWeekMon = mostRecentMonday(new Date())
-
+  const today = todayPT()
   const year = viewMonth.getUTCFullYear()
   const month = viewMonth.getUTCMonth()
-  const firstOfMonth = new Date(Date.UTC(year, month, 1, 12)) // noon UTC = same calendar day in PT
-  const leadBlanks = (firstOfMonth.getDay() + 6) % 7 // getDay() on noon UTC = correct PT day-of-week
+  const firstOfMonth = new Date(Date.UTC(year, month, 1, 12))
+  const leadBlanks = (firstOfMonth.getDay() + 6) % 7
   const daysInMonth = new Date(Date.UTC(year, month + 1, 0)).getDate()
   const cells: (Date | null)[] = [
     ...Array.from({ length: leadBlanks }, () => null),
     ...Array.from({ length: daysInMonth }, (_, i) => new Date(Date.UTC(year, month, i + 1, 12))),
   ]
 
-  const selWeekTime = mostRecentMonday(selectedMonday).getTime()
-  const currentWeekTime = currentWeekMon.getTime()
-
   function pick(day: Date) {
-    onSelectWeek(mostRecentMonday(day))
+    onSelectDate(ptDateISO(day))
     setOpen(false)
   }
 
+  const label = new Date(`${selectedDate}T12:00:00Z`).toLocaleDateString('en-US', {
+    timeZone: 'America/Los_Angeles', weekday: 'short', month: 'short', day: 'numeric', year: 'numeric',
+  })
+
   return (
-    <div className="relative w-full" ref={ref}>
-      {/* Trigger — clicking anywhere on this row opens the calendar */}
+    <div className="relative w-full sm:w-auto" ref={ref}>
       <button
         type="button"
         onClick={() => setOpen(v => !v)}
-        className="field-input w-full flex items-center justify-between gap-2 text-left cursor-pointer hover:bg-sand3 transition-colors"
-        title="Click to pick a week"
+        className="field-input w-full sm:w-auto flex items-center justify-between gap-2 text-left cursor-pointer hover:bg-sand3 transition-colors"
+        title="Click to pick a date"
       >
-        <span className="font-semibold text-ink">{fmtWeek(selectedMonday)}</span>
+        <span className="font-semibold text-ink">{label}</span>
         <FiCalendar className="w-4 h-4 text-ink4 shrink-0" aria-hidden />
       </button>
 
       {open && (
         <div className="absolute z-50 mt-1 left-0 bg-sand border border-sand4 rounded-lg shadow-card-md p-3 w-[17rem]">
-          {/* Month nav */}
           <div className="flex items-center justify-between mb-2">
             <button
               type="button"
@@ -93,33 +89,31 @@ export default function WeekCalendar({
             ><FiChevronRight className="w-4 h-4" /></button>
           </div>
 
-          {/* Weekday header */}
           <div className="grid grid-cols-7 gap-0.5 mb-1">
             {WEEKDAYS.map((d, i) => (
               <div key={i} className="text-center text-[10px] font-bold text-ink4">{d}</div>
             ))}
           </div>
 
-          {/* Days — all weeks selectable; current week highlighted with a ring */}
           <div className="grid grid-cols-7 gap-0.5">
             {cells.map((day, i) => {
               if (!day) return <div key={i} />
-              const inSelWeek = mostRecentMonday(day).getTime() === selWeekTime
-              const isCurrentWeek = mostRecentMonday(day).getTime() === currentWeekTime
-              const isToday = day.toDateString() === new Date().toDateString()
+              const iso = ptDateISO(day)
+              const isSel = iso === selectedDate
+              const isToday = iso === today
+              const hasReport = markedDates?.has(iso)
               return (
                 <button
                   key={i}
                   type="button"
                   onClick={() => pick(day)}
-                  className={`h-7 text-xs rounded flex items-center justify-center transition-colors ${
-                    inSelWeek
-                      ? 'bg-accent text-white font-bold'
-                      : 'text-ink2 hover:bg-sand3'
-                  } ${isToday && !inSelWeek ? 'ring-1 ring-accent' : ''} ${isCurrentWeek && !inSelWeek ? 'font-semibold text-ink' : ''}`}
-                  title={fmtWeek(mostRecentMonday(day))}
+                  className={`relative h-7 text-xs rounded flex items-center justify-center transition-colors ${
+                    isSel ? 'bg-accent text-white font-bold' : 'text-ink2 hover:bg-sand3'
+                  } ${isToday && !isSel ? 'ring-1 ring-accent' : ''}`}
+                  title={iso}
                 >
                   {day.getDate()}
+                  {hasReport && !isSel && <span className="absolute bottom-0.5 w-1 h-1 rounded-full bg-accent" />}
                 </button>
               )
             })}
@@ -127,10 +121,10 @@ export default function WeekCalendar({
 
           <button
             type="button"
-            onClick={() => { onSelectWeek(currentWeekMon); setOpen(false) }}
+            onClick={() => { onSelectDate(today); setOpen(false) }}
             className="w-full mt-2 text-xs text-accent hover:underline"
           >
-            Jump to current week
+            Jump to today
           </button>
         </div>
       )}

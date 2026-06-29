@@ -19,9 +19,8 @@ interface TeamRow {
 interface ReportRow { submitted_by: string; created_at: string; win?: string | null; accomplishments?: string | null; priorities?: string | null; blockers?: string | null }
 
 const WEEKS = 8
-function mostRecentMonday(from: Date): Date {
-  const d = new Date(from); d.setDate(d.getDate() - ((d.getDay() + 6) % 7)); d.setHours(0, 0, 0, 0); return d
-}
+import { getMondayOfWeekPT, shiftWeeks, weekStartISO } from '@/lib/week-utils'
+const mostRecentMonday = getMondayOfWeekPT
 function fmtWeek(mon: Date): string {
   const fri = new Date(mon); fri.setDate(mon.getDate() + 4)
   const f = (d: Date) => d.toLocaleDateString('en-US', { timeZone: 'America/Los_Angeles', month: 'short', day: 'numeric' })
@@ -51,14 +50,13 @@ export default function ProfilePage() {
     if (!username || me === null) return
     if (!allowed) { setLoading(false); return }
     setLoading(true)
-    const mondays = Array.from({ length: WEEKS }, (_, i) => {
-      const m = mostRecentMonday(new Date()); m.setDate(m.getDate() - (WEEKS - 1 - i) * 7); return m
-    })
+    const cur = mostRecentMonday(new Date())
+    const mondays = Array.from({ length: WEEKS }, (_, i) => shiftWeeks(cur, -(WEEKS - 1 - i)))
     Promise.all([
       fetch('/api/team', { cache: 'no-store' }).then(r => r.json()).catch(() => []),
       fetch('/api/clickup-tasks', { cache: 'no-store' }).then(r => r.json()).catch(() => null),
       fetch('/api/webwork', { cache: 'no-store' }).then(r => r.json()).catch(() => null),
-      ...mondays.map(m => fetch(`/api/weekly-reports?week_start=${m.toISOString().slice(0, 10)}`, { cache: 'no-store' }).then(r => r.json()).catch(() => [])),
+      ...mondays.map(m => fetch(`/api/weekly-reports?week_start=${weekStartISO(m)}`, { cache: 'no-store' }).then(r => r.json()).catch(() => [])),
     ]).then((results) => {
       const team: TeamRow[] = Array.isArray(results[0]) ? results[0] : []
       const m = team.find(t => (t.vcos_username ?? '').toLowerCase() === username) ?? null

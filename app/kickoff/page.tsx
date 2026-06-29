@@ -28,9 +28,8 @@ interface MemberAudit {
   avatar: { image: string | null; initials: string | null; color: string | null } | null
 }
 
-function mostRecentMonday(from: Date): Date {
-  const d = new Date(from); d.setDate(d.getDate() - ((d.getDay() + 6) % 7)); d.setHours(0, 0, 0, 0); return d
-}
+import { getMondayOfWeekPT } from '@/lib/week-utils'
+const mostRecentMonday = getMondayOfWeekPT
 function fmtWeek(mon: Date): string {
   const fri = new Date(mon); fri.setDate(mon.getDate() + 4)
   const f = (d: Date) => d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
