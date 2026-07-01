@@ -24,8 +24,8 @@ export async function POST(req: NextRequest) {
   if (!['admin', 'owner'].includes(req.headers.get('x-role') ?? '')) {
     return NextResponse.json({ error: 'Admin access required' }, { status: 403 })
   }
-  const apiKey = process.env.ANTHROPIC_API_KEY
-  if (!apiKey) return NextResponse.json({ error: 'ANTHROPIC_API_KEY not configured' }, { status: 500 })
+  const apiKey = process.env.ANTHROPIC_API_KEY_REPORTS
+  if (!apiKey) return NextResponse.json({ error: 'ANTHROPIC_API_KEY_REPORTS not configured' }, { status: 500 })
 
   const mon = mostRecentMonday(new Date())
   const weekStart = weekStartISO(mon)

@@ -5,9 +5,45 @@ import Anthropic from '@anthropic-ai/sdk'
 import { SYSTEM_STATIC, buildLiveBlock } from '@/lib/vcos-brain'
 import { buildChatContext } from '@/lib/chat-context'
 import { loadConversation, saveConversation, addCommitments, extractLogBlocks, stripLogBlocks } from '@/lib/memory'
+import { todayPT } from '@/lib/week-utils'
 
 export const dynamic = 'force-dynamic'
 export const maxDuration = 60
+
+// ── Token-control settings ────────────────────────────────────────────────────
+const MODEL            = 'claude-haiku-4-5-20251001'
+const MAX_OUTPUT_TOKENS = 300   // enough for grounded Q&A; keeps output cost low
+const HISTORY_TURNS    = 4     // last N user+assistant turns sent to model
+const DAILY_LIMIT      = 80    // hard ceiling per user per PT calendar day
+const BLOCK_AT         = Math.floor(DAILY_LIMIT * 0.95) // 76 — block before hitting hard limit
+
+const CONTACT_MSG = "You've reached today's message limit for VCoS-AI. Contact your admin to get more access."
+
+// Server-side live-context cache — 5 min TTL per user so the context block is
+// byte-identical between turns (essential for Supabase query de-duplication).
+const CTX_CACHE_TTL_MS = 5 * 60 * 1000
+const ctxCache = new Map<string, { ctx: string; ts: number }>()
+
+// Daily call counter keyed by "username:YYYY-MM-DD" (PT calendar date).
+const dayCounts = new Map<string, number>()
+
+function getDayKey(username: string) {
+  return `${username}:${todayPT()}`
+}
+
+/** Returns remaining calls allowed. Returns 0 when limit reached. */
+function consumeAndCheck(username: string): number {
+  const key = getDayKey(username)
+  const prev = dayCounts.get(key) ?? 0
+  const next = prev + 1
+  dayCounts.set(key, next)
+  return Math.max(0, DAILY_LIMIT - next)
+}
+
+function getCachedCtx(username: string): string | null {
+  const e = ctxCache.get(username)
+  return e && Date.now() - e.ts < CTX_CACHE_TTL_MS ? e.ctx : null
+}
 
 interface ChatMessage { role: 'user' | 'assistant'; content: string }
 
@@ -16,36 +52,47 @@ export async function POST(req: NextRequest) {
   const username = req.headers.get('x-user')
   if (!role || !username) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  const apiKey = process.env.ANTHROPIC_API_KEY
-  if (!apiKey) return NextResponse.json({ error: 'ANTHROPIC_API_KEY not configured' }, { status: 500 })
+  const apiKey = process.env.ANTHROPIC_API_KEY_CHAT
+  if (!apiKey) return NextResponse.json({ error: 'ANTHROPIC_API_KEY_CHAT not configured' }, { status: 500 })
 
   let body: { messages?: ChatMessage[] }
   try { body = await req.json() } catch { return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 }) }
 
   const messages = (body.messages ?? [])
     .filter(m => m && (m.role === 'user' || m.role === 'assistant') && typeof m.content === 'string' && m.content.trim())
-    .slice(-10) // low-token: only the last 10 turns go to the model
+    .slice(-HISTORY_TURNS)
   if (!messages.length) return NextResponse.json({ error: 'No messages' }, { status: 400 })
 
-  const isAdmin = ['admin', 'owner'].includes(role)
-  let liveContext = ''
-  try {
-    liveContext = await buildChatContext(username, isAdmin)
-  } catch {
-    liveContext = '(Live VCOS data is temporarily unavailable — answer from general knowledge of the team and flag that the data feed is down.)'
+  // Daily rate limit — check before any Anthropic call
+  const remaining = consumeAndCheck(username)
+  if (remaining <= 0) {
+    return NextResponse.json({ error: CONTACT_MSG }, { status: 429 })
   }
-  // Two cache points:
-  // 1. SYSTEM_STATIC — fixed per app version, always a cache hit after first call.
-  // 2. Live data block — changes when data changes, but within a 5-min conversation
-  //    the ClickUp/reports data is the same → cache hit on messages 2+ of a session.
-  //    Anthropic's ephemeral cache TTL is 5 min, matching ClickUp's own cache window.
-  const system = [
-    { type: 'text' as const, text: SYSTEM_STATIC, cache_control: { type: 'ephemeral' as const } },
-    { type: 'text' as const, text: buildLiveBlock(liveContext), cache_control: { type: 'ephemeral' as const } },
+
+  const isAdmin = ['admin', 'owner'].includes(role)
+
+  // 5-min server-side context cache — avoids redundant Supabase queries and
+  // keeps the live-context block identical between turns for de-duplication.
+  let liveContext = getCachedCtx(username)
+  if (!liveContext) {
+    try {
+      liveContext = await buildChatContext(username, isAdmin)
+      ctxCache.set(username, { ctx: liveContext, ts: Date.now() })
+    } catch {
+      liveContext = '(Live VCOS data is temporarily unavailable.)'
+    }
+  }
+
+  // Two cache breakpoints: SYSTEM_STATIC never changes, and the live block is
+  // byte-identical for this user across the CTX_CACHE_TTL_MS window — so both
+  // can hit Anthropic's prompt cache (5-min ephemeral TTL, same window) instead
+  // of being billed as fresh input tokens on every turn.
+  const system: Anthropic.TextBlockParam[] = [
+    { type: 'text', text: SYSTEM_STATIC, cache_control: { type: 'ephemeral' } },
+    { type: 'text', text: buildLiveBlock(liveContext), cache_control: { type: 'ephemeral' } },
   ]
 
   const client = new Anthropic({ apiKey })
-
   const lastUser = messages[messages.length - 1]
 
   const stream = new ReadableStream<Uint8Array>({
@@ -54,10 +101,8 @@ export async function POST(req: NextRequest) {
       let full = ''
       try {
         const ai = client.messages.stream({
-          // Low-token: Haiku is far cheaper per token than Sonnet and is plenty
-          // for grounded Q&A + report drafting. Static brain is prompt-cached.
-          model: 'claude-haiku-4-5-20251001',
-          max_tokens: 2000,
+          model: MODEL,
+          max_tokens: MAX_OUTPUT_TOKENS,
           system,
           messages: messages.map(m => ({ role: m.role, content: m.content })),
         })
@@ -65,14 +110,17 @@ export async function POST(req: NextRequest) {
         await ai.finalMessage()
         controller.close()
       } catch (err) {
-        const msg = err instanceof Error ? err.message : 'AI request failed'
-        controller.enqueue(enc.encode(`\n\n⚠️ ${msg}`))
+        // 429 = Anthropic rate limit, 529 = Anthropic overload — user-friendly msg
+        const status = (err instanceof Error && 'status' in err) ? (err as {status: number}).status : 0
+        const friendly = (status === 429 || status === 529)
+          ? CONTACT_MSG
+          : 'VCoS-AI is temporarily unavailable. Please try again in a moment.'
+        controller.enqueue(enc.encode(`\n\n⚠️ ${friendly}`))
         controller.close()
       }
 
-      // Post-stream: extract logged commitments/decisions, then persist the
-      // new exchange to memory (append to stored history). Failures here never
-      // affect the response the user already received.
+      // Post-stream: log commitments and persist conversation. Never affects the
+      // response the user already received.
       try {
         const cleaned = stripLogBlocks(full)
         const logs = extractLogBlocks(full)
@@ -86,7 +134,7 @@ export async function POST(req: NextRequest) {
             { role: 'assistant', content: cleaned, at: now },
           ])
         }
-      } catch { /* best-effort persistence */ }
+      } catch { /* best-effort */ }
     },
   })
 

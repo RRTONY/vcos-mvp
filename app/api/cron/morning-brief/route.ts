@@ -36,8 +36,8 @@ function toSlackMrkdwn(md: string): string {
 }
 
 async function generateBrief(): Promise<string> {
-  const apiKey = process.env.ANTHROPIC_API_KEY
-  if (!apiKey) throw new Error('ANTHROPIC_API_KEY not configured')
+  const apiKey = process.env.ANTHROPIC_API_KEY_REPORTS
+  if (!apiKey) throw new Error('ANTHROPIC_API_KEY_REPORTS not configured')
   const ctx = await buildChatContext('tony', true) // whole-team, admin scope
   const client = new Anthropic({ apiKey })
   const msg = await client.messages.create({

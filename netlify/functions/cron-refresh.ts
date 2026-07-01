@@ -46,7 +46,8 @@ export default async () => {
 
 export const config: Config = {
   // 14:00 UTC = 7:00 AM PDT (UTC-7). Adjust to 15:00 UTC in winter if needed.
-  // Run hourly so the cache stays fresh and self-heals from any single failed
-  // refresh (was once daily, which let the cache expire → blank dashboard).
-  schedule: '0 * * * *',
+  // Runs once daily so the dashboard is populated before the day starts.
+  // A failed refresh is no longer a "blank dashboard" risk — getCachedSWR
+  // (lib/api-cache.ts) serves stale-but-present data for up to 7 days.
+  schedule: '0 14 * * *',
 }

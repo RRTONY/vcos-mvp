@@ -34,7 +34,7 @@ interface AiAnalysis {
 }
 
 async function analyzeReport(report: ReportBody): Promise<AiAnalysis | null> {
-  const apiKey = process.env.ANTHROPIC_API_KEY
+  const apiKey = process.env.ANTHROPIC_API_KEY_REPORTS
   if (!apiKey) return null
 
   const client = new Anthropic({ apiKey })
