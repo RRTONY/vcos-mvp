@@ -1,7 +1,14 @@
 'use client'
 
 import { useEffect, useState } from 'react'
+import type { IconType } from 'react-icons'
+import {
+  FiMessageSquare, FiCheckSquare, FiMail, FiMic, FiCreditCard,
+  FiBarChart2, FiLock, FiGlobe, FiEdit3, FiTrendingUp, FiClock, FiCpu, FiSettings,
+} from 'react-icons/fi'
 import SystemRow from '@/components/SystemRow'
+import TabBar from '@/components/TabBar'
+import KeysPanel from '@/app/settings/keys/page'
 import { useRefresh } from '@/components/RefreshContext'
 import { useMe } from '@/hooks/useMe'
 import { CLICKUP_WORKSPACE_URL } from '@/lib/constants'
@@ -35,10 +42,15 @@ const STATIC_SYSTEMS: SystemStatus[] = [
   { system: 'Manus/AI',     status: 'green', detail: '', url: 'https://manus.im' },
 ]
 
-const ICONS: Record<string, string> = {
-  Slack: '📬', ClickUp: '✅', Gmail: '📧', Fireflies: '🎙', 'BILL.com': '💳',
-  QuickBooks: '📊', Bitwarden: '🔐', Netlify: '🌐', Braintrust: '📝',
-  'Email Meter': '📈', WebWork: '⏱', 'Manus/AI': '🧠',
+const SYSTEMS_TABS = [
+  { id: 'status', label: 'Status' },
+  { id: 'keys', label: 'API Keys' },
+] as const
+
+const ICONS: Record<string, IconType> = {
+  Slack: FiMessageSquare, ClickUp: FiCheckSquare, Gmail: FiMail, Fireflies: FiMic, 'BILL.com': FiCreditCard,
+  QuickBooks: FiBarChart2, Bitwarden: FiLock, Netlify: FiGlobe, Braintrust: FiEdit3,
+  'Email Meter': FiTrendingUp, WebWork: FiClock, 'Manus/AI': FiCpu,
 }
 
 
@@ -73,6 +85,7 @@ const HEALTH_LABEL: Record<HealthRow['health'], string> = {
 }
 
 export default function SystemsPage() {
+  const [tab, setTab] = useState<typeof SYSTEMS_TABS[number]['id']>('status')
   const [systems, setSystems] = useState<SystemStatus[]>(STATIC_SYSTEMS)
   const [lastChecked, setLastChecked] = useState('')
   const [slackKPIs, setSlackKPIs] = useState<SlackKPIs | null>(null)
@@ -142,6 +155,12 @@ export default function SystemsPage() {
 
   return (
     <div>
+      {isAdmin && <div className="mt-6"><TabBar tabs={SYSTEMS_TABS} active={tab} onChange={setTab} /></div>}
+
+      {tab === 'keys' && isAdmin ? (
+        <KeysPanel />
+      ) : (
+        <>
       <div className="flex items-center justify-between mt-6 mb-1">
         <div className="slbl mb-0">Digital Systems Status</div>
         {lastChecked && <span className="text-xs text-ink4">Checked {lastChecked}</span>}
@@ -152,7 +171,7 @@ export default function SystemsPage() {
           {systems.map((s) => (
             <SystemRow
               key={s.system}
-              icon={ICONS[s.system] ?? '⚙️'}
+              icon={ICONS[s.system] ?? FiSettings}
               name={s.system}
               detail={s.detail}
               status={s.status}
@@ -240,6 +259,8 @@ export default function SystemsPage() {
           </div>
         </div>
       </div>
+      </>
+      )}
     </div>
   )
 }

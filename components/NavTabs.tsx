@@ -8,32 +8,33 @@ const TABS = [
   { label: 'Dashboard', href: '/' },
   { label: 'VCoS-AI', href: '/chatbot' },
   { label: 'Reports', href: '/reports' },
-  { label: 'Submit Report', href: '/submit' },
+  { label: 'Weekly Report', href: '/submit' },
+  { label: 'Team Meeting', href: '/meeting-prep' },
   { label: 'Compliance', href: '/compliance' },
   { label: 'Invoices', href: '/invoices' },
   { label: 'BD Pipeline', href: '/bd' },
-  { label: 'Systems', href: '/systems' },
-  { label: 'Open Loops', href: '/openloops' },
 ]
 
 const KICKOFF_TAB = { label: 'Performance', href: '/kickoff' }
 const COMMIT_TAB = { label: 'Commitments', href: '/commitments' }
-const WORKLOAD_TAB = { label: 'Workload', href: '/workload' }
 const STANDUP_TAB = { label: 'Standup Log', href: '/standup' }
 const ESCALATION_TAB = { label: 'Escalations', href: '/escalations' }
-const SLACK_TAB = { label: 'Slack Feed', href: '/slack-feed' }
 
 const ADMIN_TABS = [
   { label: 'Team & Users', href: '/settings/people' },
-  { label: 'Requests', href: '/settings/requests' },
-  { label: 'API Keys', href: '/settings/keys' },
 ]
+
+// Systems always renders last — Requests and API Keys now live inside
+// Team & Users / Systems as tabs, rather than their own nav entries.
+const SYSTEMS_TAB = { label: 'Systems', href: '/systems' }
 
 export default function NavTabs() {
   const path = usePathname()
   const { isAdmin } = useMe()
 
-  const allTabs = isAdmin ? [...TABS, KICKOFF_TAB, WORKLOAD_TAB, STANDUP_TAB, ESCALATION_TAB, SLACK_TAB, COMMIT_TAB, ...ADMIN_TABS] : TABS
+  const allTabs = isAdmin
+    ? [...TABS, KICKOFF_TAB, STANDUP_TAB, ESCALATION_TAB, COMMIT_TAB, ...ADMIN_TABS, SYSTEMS_TAB]
+    : [...TABS, SYSTEMS_TAB]
 
   return (
     <div className="flex border-b border-sand4 bg-sand overflow-x-auto sticky top-16 z-30">

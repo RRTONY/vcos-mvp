@@ -5,33 +5,18 @@ import { useRouter } from 'next/navigation'
 import { useRefresh } from './RefreshContext'
 import { useMe } from '@/hooks/useMe'
 import { RAMPRATE_LOGO_B64 } from '@/lib/logo'
-import { FiAlertTriangle, FiArrowRight, FiRefreshCw } from 'react-icons/fi'
-import { getMondayOfWeekPT, weekStartISO } from '@/lib/week-utils'
+import { FiRefreshCw } from 'react-icons/fi'
 
 export default function Topbar() {
   const { me } = useMe()
   const [dateStr, setDateStr] = useState('')
   const { triggerRefresh } = useRefresh()
   const [refreshing, setRefreshing] = useState(false)
-  const [needsReport, setNeedsReport] = useState(false)
   const router = useRouter()
 
   useEffect(() => {
     setDateStr(new Date().toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' }))
   }, [])
-
-  // Personal nudge: does this user still owe a weekly report for the current week?
-  useEffect(() => {
-    if (!me?.filesReport || !me.fullName) { setNeedsReport(false); return }
-    const weekStart = weekStartISO(getMondayOfWeekPT())
-    fetch(`/api/weekly-reports?week_start=${weekStart}`, { cache: 'no-store' })
-      .then(r => r.json())
-      .then((data: { submitted_by: string }[]) => {
-        const filed = Array.isArray(data) && data.some(r => r.submitted_by === me.fullName)
-        setNeedsReport(!filed)
-      })
-      .catch(() => setNeedsReport(false))
-  }, [me])
 
   const handleRefresh = useCallback(async () => {
     setRefreshing(true)
@@ -70,20 +55,6 @@ export default function Topbar() {
 
         {/* Date — hidden on mobile */}
         <span className="hidden md:block text-sm text-white/60">{dateStr}</span>
-
-        {/* Personal weekly-report reminder — disappears once filed */}
-        {needsReport && (
-          <a
-            href="/submit"
-            title="You haven’t filed your weekly report this week"
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-warning text-white text-xs sm:text-sm font-semibold hover:opacity-90 transition-opacity whitespace-nowrap"
-          >
-            <FiAlertTriangle className="w-3.5 h-3.5" aria-hidden />
-            <span className="hidden sm:inline">File weekly report</span>
-            <span className="sm:hidden">Report</span>
-            <FiArrowRight className="w-3.5 h-3.5" aria-hidden />
-          </a>
-        )}
 
         {/* Live indicator */}
         <div className="flex items-center gap-1.5">

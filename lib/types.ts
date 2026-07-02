@@ -73,3 +73,14 @@ export interface Me {
   fullName: string | null;
   filesReport: boolean;
 }
+
+export interface MeetingPrepRow {
+  id: string;
+  submitted_by: string;
+  meeting_date: string;
+  wins: string | null;
+  priorities: string | null;
+  blockers: string | null;
+  decisions: string | null;
+  fyis: string | null;
+}

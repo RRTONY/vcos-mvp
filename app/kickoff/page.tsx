@@ -1,44 +1,23 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
-import Link from 'next/link'
-import { useRefresh } from '@/components/RefreshContext'
+import { useEffect, useState } from 'react'
 import { useMe } from '@/hooks/useMe'
 import Avatar from '@/components/Avatar'
 import Spinner from '@/components/Spinner'
 import FormattedNotes from '@/components/FormattedNotes'
 import TaskBuckets from '@/components/TaskBuckets'
-import { classifySubmission, SUBMIT_STATUS_META, type SubmitStatus } from '@/lib/report-status'
+import PeopleAuditTable from '@/components/PeopleAuditTable'
+import TabBar from '@/components/TabBar'
+import { useMemberAudit, type MemberAudit, type AuditReportRow } from '@/hooks/useMemberAudit'
 import { isReportFrom } from '@/lib/report-match'
 import { bucketFor } from '@/lib/due-buckets'
-import type { ClickUpData, WebWorkMember, Task } from '@/lib/types'
+import { lookupByAssignee } from '@/lib/assignee-lookup'
+import type { ClickUpData } from '@/lib/types'
 
-// ── Types ─────────────────────────────────────────────────────────────────────
-interface TeamRow { full_name: string; vcos_username: string | null; clickup_key: string | null; role_description: string | null; hourly_rate: number; files_report: boolean; active: boolean }
-interface ReportRow {
-  submitted_by: string; created_at: string
-  win?: string | null; accomplishments?: string | null; goals_met?: string | null; priorities?: string | null
-}
-interface MemberAudit {
-  name: string; username: string | null; role: string; cuKey: string
-  status: SubmitStatus | null      // null = not submitted
-  report: ReportRow | null
-  hours: number | null
-  total: number; overdue: number; urgent: number
-  avatar: { image: string | null; initials: string | null; color: string | null } | null
-}
-
-import { getMondayOfWeekPT } from '@/lib/week-utils'
-const mostRecentMonday = getMondayOfWeekPT
 function fmtWeek(mon: Date): string {
   const fri = new Date(mon); fri.setDate(mon.getDate() + 4)
   const f = (d: Date) => d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
   return `${f(mon)}–${f(fri)}`
-}
-function lookup<T>(map: Record<string, T> | undefined, cuKey: string): T | null {
-  if (!map || !cuKey) return null
-  const k = Object.keys(map).find(x => x.includes(cuKey))
-  return k ? map[k] : null
 }
 
 const TABS = [
@@ -64,41 +43,27 @@ interface Brief {
 
 export default function KickoffPage() {
   const { isAdmin } = useMe()
-  const { refreshKey } = useRefresh()
   const [tab, setTab] = useState<TabId>('agenda')
-  const [team, setTeam] = useState<TeamRow[]>([])
-  const [clickup, setClickUp] = useState<ClickUpData | null>(null)
-  const [webwork, setWebwork] = useState<WebWorkMember[]>([])
-  const [reports, setReports] = useState<ReportRow[]>([])
-  const [recentReports, setRecentReports] = useState<ReportRow[]>([])
-  const [loading, setLoading] = useState(true)
+  const [recentReports, setRecentReports] = useState<AuditReportRow[]>([])
+  const [recentLoading, setRecentLoading] = useState(true)
   const [brief, setBrief] = useState<Brief | null>(null)
   const [briefAt, setBriefAt] = useState<string | null>(null)
   const [generating, setGenerating] = useState(false)
 
-  const weekMon = useMemo(() => mostRecentMonday(new Date()), [])
+  const { audit, reportingAudit, clickup, loading: auditLoading, weekMon } = useMemberAudit(isAdmin)
+  const loading = auditLoading || recentLoading
 
+  // Recent reports (no week filter) so Completed Tasks shows each person's
+  // latest report even if they haven't filed for the current week yet.
   useEffect(() => {
     if (!isAdmin) return
-    setLoading(true)
-    const weekStart = weekMon.toISOString().slice(0, 10)
-    Promise.all([
-      fetch('/api/team', { cache: 'no-store' }).then(r => r.json()).catch(() => []),
-      fetch('/api/clickup-tasks', { cache: 'no-store' }).then(r => r.json()).catch(() => null),
-      fetch('/api/webwork', { cache: 'no-store' }).then(r => r.json()).catch(() => null),
-      fetch(`/api/weekly-reports?week_start=${weekStart}`, { cache: 'no-store' }).then(r => r.json()).catch(() => []),
-      // Recent reports (no week filter) so Completed Tasks shows each person's
-      // latest report even if they haven't filed for the current week yet.
-      fetch('/api/weekly-reports', { cache: 'no-store' }).then(r => r.json()).catch(() => []),
-    ]).then(([t, cu, ww, rep, recent]) => {
-      setTeam(Array.isArray(t) ? t.filter((m: TeamRow) => m.active) : [])
-      setClickUp(cu)
-      setWebwork(ww?.members ?? [])
-      setReports(Array.isArray(rep) ? rep : [])
-      setRecentReports(Array.isArray(recent) ? recent : [])
-      setLoading(false)
-    })
-  }, [isAdmin, weekMon, refreshKey])
+    setRecentLoading(true)
+    fetch('/api/weekly-reports', { cache: 'no-store' })
+      .then(r => r.json())
+      .then(recent => setRecentReports(Array.isArray(recent) ? recent : []))
+      .catch(() => setRecentReports([]))
+      .finally(() => setRecentLoading(false))
+  }, [isAdmin])
 
   // Load the last AI-generated brief (cheap, cached server-side).
   useEffect(() => {
@@ -119,31 +84,6 @@ export default function KickoffPage() {
     } catch { alert('Network error generating brief') } finally { setGenerating(false) }
   }
 
-  const audit: MemberAudit[] = useMemo(() => {
-    return team.map(m => {
-      const cuKey = (m.clickup_key ?? m.full_name.split(' ')[0]).toLowerCase()
-      const report = reports.find(r => r.submitted_by === m.full_name)
-        ?? reports.find(r => r.submitted_by.toLowerCase().includes(m.full_name.split(' ')[0].toLowerCase())) ?? null
-      const stats = lookup(clickup?.assigneeStats, cuKey)
-      const ww = webwork.find(w => w.username.toLowerCase().includes(cuKey) || cuKey.includes(w.username.toLowerCase()))
-      return {
-        name: m.full_name,
-        username: m.vcos_username,
-        role: m.role_description ?? '',
-        cuKey,
-        status: report ? classifySubmission(report.created_at, weekMon) : null,
-        report,
-        hours: ww?.totalHours ?? null,
-        total: stats?.total ?? 0,
-        overdue: stats?.overdue ?? 0,
-        urgent: stats?.urgent ?? 0,
-        avatar: lookup(clickup?.assigneeAvatars, cuKey),
-        filesReport: m.files_report,
-      } as MemberAudit & { filesReport: boolean }
-    })
-  }, [team, reports, clickup, webwork, weekMon])
-
-  const reportingAudit = audit.filter(a => (a as MemberAudit & { filesReport: boolean }).filesReport)
   const submittedCount = reportingAudit.filter(a => a.status !== null).length
 
   if (!isAdmin) {
@@ -166,17 +106,7 @@ export default function KickoffPage() {
         {briefAt && <span> · Brief generated {new Date(briefAt).toLocaleString('en-US', { timeZone: 'America/Los_Angeles', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })} PT</span>}
       </p>
 
-      {/* Tabs */}
-      <div className="flex gap-0 border-b border-sand3 mb-5 overflow-x-auto">
-        {TABS.map(t => (
-          <button key={t.id} onClick={() => setTab(t.id)}
-            className={`px-4 py-2.5 text-xs font-bold uppercase tracking-widest border-b-2 whitespace-nowrap transition-colors ${
-              tab === t.id ? 'border-ink text-ink' : 'border-transparent text-ink4 hover:text-ink3'
-            }`}>
-            {t.label}
-          </button>
-        ))}
-      </div>
+      <TabBar tabs={TABS} active={tab} onChange={setTab} />
 
       {loading ? (
         <div className="py-6"><Spinner label="Building the brief…" className="text-ink4 text-sm" /></div>
@@ -185,7 +115,7 @@ export default function KickoffPage() {
       ) : tab === 'recs' ? (
         <RecommendationsTab brief={brief} generating={generating} onGenerate={generateBrief} />
       ) : tab === 'audit' ? (
-        <PeopleAudit rows={reportingAudit} />
+        <PeopleAuditTable rows={reportingAudit} />
       ) : tab === 'completed' ? (
         <CompletedTasks rows={reportingAudit} recentReports={recentReports} />
       ) : tab === 'loops' ? (
@@ -275,51 +205,8 @@ function RecommendationsTab({ brief, generating, onGenerate }: { brief: Brief | 
   )
 }
 
-// ── People Audit tab ────────────────────────────────────────────────────────────
-function PeopleAudit({ rows }: { rows: MemberAudit[] }) {
-  return (
-    <div className="card overflow-x-auto">
-      <table className="w-full text-sm border-collapse min-w-[640px]">
-        <thead>
-          <tr className="border-b border-sand3">
-            {['Member', 'Report', 'Hours', 'Tasks', 'Overdue', 'Urgent', 'Top highlight'].map(h => (
-              <th key={h} className="text-left py-2 px-3 font-extrabold text-[10px] uppercase tracking-widest text-ink3">{h}</th>
-            ))}
-          </tr>
-        </thead>
-        <tbody>
-          {rows.map(a => {
-            const meta = a.status ? SUBMIT_STATUS_META[a.status] : null
-            return (
-              <tr key={a.name} className="border-b border-sand3 last:border-0">
-                <td className="py-2.5 px-3">
-                  <div className="flex items-center gap-2">
-                    <Avatar name={a.name} image={a.avatar?.image} initials={a.avatar?.initials} color={a.avatar?.color} className="w-7 h-7 text-[11px]" />
-                    <div>
-                      {a.username
-                        ? <Link href={`/profile/${a.username}`} className="font-semibold text-[13px] hover:text-accent hover:underline">{a.name}</Link>
-                        : <div className="font-semibold text-[13px]">{a.name}</div>}
-                      <div className="text-[11px] text-ink4">{a.role}</div>
-                    </div>
-                  </div>
-                </td>
-                <td className="py-2.5 px-3">{meta ? <span className={meta.badge}>{meta.label}</span> : <span className="badge-red">Missing</span>}</td>
-                <td className="py-2.5 px-3 tabular-nums">{a.hours != null ? `${a.hours}h` : '—'}</td>
-                <td className="py-2.5 px-3 tabular-nums">{a.total}</td>
-                <td className="py-2.5 px-3 tabular-nums">{a.overdue > 0 ? <span className="text-danger font-semibold">{a.overdue}</span> : '0'}</td>
-                <td className="py-2.5 px-3 tabular-nums">{a.urgent > 0 ? <span className="text-warning font-semibold">{a.urgent}</span> : '0'}</td>
-                <td className="py-2.5 px-3 text-ink3 text-xs max-w-[260px] truncate">{a.report?.win || '—'}</td>
-              </tr>
-            )
-          })}
-        </tbody>
-      </table>
-    </div>
-  )
-}
-
 // ── Completed Tasks tab ─────────────────────────────────────────────────────────
-function CompletedTasks({ rows, recentReports }: { rows: MemberAudit[]; recentReports: ReportRow[] }) {
+function CompletedTasks({ rows, recentReports }: { rows: MemberAudit[]; recentReports: AuditReportRow[] }) {
   // Each reporting member's most recent report (any week), so this isn't empty
   // just because no one has filed for the current week yet.
   const people = rows.map(a => {
@@ -360,7 +247,7 @@ function CompletedTasks({ rows, recentReports }: { rows: MemberAudit[]; recentRe
 function OpenLoopsByPerson({ rows, clickup }: { rows: MemberAudit[]; clickup: ClickUpData | null }) {
   const now = new Date()
   const people = rows.map(a => {
-    const tasks = lookup(clickup?.tasksByAssignee, a.cuKey) ?? []
+    const tasks = lookupByAssignee(clickup?.tasksByAssignee, a.cuKey) ?? []
     return { ...a, tasks, overdue: tasks.filter(t => bucketFor(t.dueTs, now) === 'overdue').length }
   }).filter(p => p.tasks.length > 0)
     .sort((a, b) => b.overdue - a.overdue || b.tasks.length - a.tasks.length)
