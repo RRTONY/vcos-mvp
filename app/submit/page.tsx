@@ -13,7 +13,7 @@ interface AiAnalysis {
   actions: string[]
 }
 
-import { getMondayOfWeekPT, fmtWeekRange } from '@/lib/week-utils'
+import { getMondayOfWeekPT, fmtWeekRange, shiftWeeks, weekStartISO } from '@/lib/week-utils'
 const getMostRecentMonday = getMondayOfWeekPT
 const weekLabel = fmtWeekRange
 
@@ -116,10 +116,34 @@ export default function SubmitPage() {
   const [teamNames, setTeamNames] = useState<string[]>([])
   const [draftRestored, setDraftRestored] = useState(false)
   const [selectedMonday, setSelectedMonday] = useState<Date>(getMostRecentMonday)
+  const [prevWeekPending, setPrevWeekPending] = useState(false)
   const formRef = useRef<HTMLFormElement>(null)
 
   // Managers can submit on behalf of anyone; everyone else is locked to themselves.
   const lockedName = !isAdmin ? (me?.fullName ?? null) : null
+
+  const currentMonday = getMostRecentMonday()
+  const prevMonday = shiftWeeks(currentMonday, -1)
+
+  // Late-submission guard: if you're filing after Friday, the week picker
+  // otherwise silently defaults to the current (new) week even though you
+  // probably mean to catch up on last week's report. If last week is still
+  // missing and you haven't filed this week either, jump the picker back to
+  // last week; either way, flag it if you're sitting on the current week
+  // while last week is still open.
+  useEffect(() => {
+    if (!lockedName) return
+    Promise.all([
+      fetch(`/api/weekly-reports?week_start=${weekStartISO(prevMonday)}`, { cache: 'no-store' }).then(r => r.json()).catch(() => []),
+      fetch(`/api/weekly-reports?week_start=${weekStartISO(currentMonday)}`, { cache: 'no-store' }).then(r => r.json()).catch(() => []),
+    ]).then(([prevReports, currReports]) => {
+      const prevFiled = Array.isArray(prevReports) && prevReports.some((r: { submitted_by: string }) => r.submitted_by === lockedName)
+      const currFiled = Array.isArray(currReports) && currReports.some((r: { submitted_by: string }) => r.submitted_by === lockedName)
+      setPrevWeekPending(!prevFiled)
+      if (!prevFiled && !currFiled) setSelectedMonday(prevMonday)
+    })
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [lockedName])
 
   useEffect(() => {
     if (!isAdmin) return // non-admins don't need the full roster
@@ -298,6 +322,20 @@ export default function SubmitPage() {
             <label className="text-xs font-bold uppercase tracking-widest text-ink3 block mb-1">Report Week <span className="text-danger">*</span></label>
             <WeekCalendar selectedMonday={selectedMonday} onSelectWeek={setSelectedMonday} />
             <input type="hidden" name="week" value={weekLabel(selectedMonday)} />
+            {prevWeekPending && selectedMonday.getTime() === currentMonday.getTime() && (
+              <div className="alert alert-amber items-start justify-between mt-3 mb-0">
+                <span>
+                  It looks like you haven&apos;t submitted your report for the previous week ({weekLabel(prevMonday)}). Are you sure you want to submit a report for the current week? If you&apos;re submitting last week&apos;s report, please change the selected week before continuing.
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setSelectedMonday(prevMonday)}
+                  className="text-xs font-bold underline whitespace-nowrap ml-3 shrink-0"
+                >
+                  Switch to {weekLabel(prevMonday)}
+                </button>
+              </div>
+            )}
           </div>
         </div>
       </div>

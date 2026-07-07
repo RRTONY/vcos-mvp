@@ -264,10 +264,6 @@ export default function DashboardPage() {
       .catch(() => setReportsLoading(false))
   }, [selectedMonday])
 
-  const wr = slack?.weeklyReports
-  const filed = wr?.filed ?? []
-  const missing = wr?.missing ?? []
-
   const currentMonday = getMostRecentMonday(new Date())
   const isCurrentWeek = selectedMonday.getTime() === currentMonday.getTime()
   const selectedWeekLabel = fmtWeekLabel(selectedMonday)
@@ -379,12 +375,12 @@ export default function DashboardPage() {
 
   const shareMsg = [
     `📊 *CEO Status Brief — Week of ${selectedWeekLabel}*`,
-    `Reports: ${displayFiled}/${displayTotal} filed${displayMissing > 0 ? ` · Missing: ${isCurrentWeek ? missing.map(n => n.split(' ')[0]).join(', ') : `${displayMissing} members`}` : ' ✅'}`,
+    `Reports: ${displayFiled}/${displayTotal} filed${displayMissing > 0 ? ` · Missing: ${missingMembers.map(m => m.name.split(' ')[0]).join(', ')}` : ' ✅'}`,
     clickup ? `CRM: ${clickup.overduePercent}% overdue (${clickup.overdue}/${clickup.totalTasks}) · ${clickup.urgent} urgent` : '',
     `_From Visual Chief of Staff_`,
-    missing.length ? [
+    missingMembers.length ? [
       ``,
-      `📋 *${missing.map(n => n.split(' ')[0]).join(', ')}* — please post your weekly report using the template below. Include *#myweeklyreport* at the top.`,
+      `📋 *${missingMembers.map(m => m.name.split(' ')[0]).join(', ')}* — please post your weekly report using the template below. Include *#myweeklyreport* at the top.`,
       `\`\`\``,
       weeklyReportTemplate,
       `\`\`\``,

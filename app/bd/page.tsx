@@ -3,6 +3,8 @@
 import { useEffect, useState } from 'react'
 import { useMe } from '@/hooks/useMe'
 import { DEAL_COLD_DAYS, DEAL_STUCK_DAYS } from '@/lib/constants'
+import { isReportFrom } from '@/lib/report-match'
+import { getMondayOfWeekPT, weekStartISO } from '@/lib/week-utils'
 
 // ─── Types ─────────────────────────────────────────────────────────────────
 
@@ -52,9 +54,6 @@ interface PipelineMetrics {
 interface KpiData {
   teamHours: number
   memberHours: { username: string; totalHours: number }[]
-  reportsFiled: number
-  reportsTotal: number
-  reportsMissing: string[]
   totalTasks: number
   overdue: number
   overduePercent: number
@@ -516,13 +515,17 @@ export default function BdPage() {
   const [editDeal, setEditDeal] = useState<Partial<BdDeal> | null>(null)
   const [saving, setSaving] = useState(false)
   const [teamNames, setTeamNames] = useState<string[]>([])
+  const [reportMembers, setReportMembers] = useState<string[]>([])
+  const [currentWeekReports, setCurrentWeekReports] = useState<{ submitted_by: string }[]>([])
 
   useEffect(() => {
     fetch('/api/team', { cache: 'no-store' })
       .then(r => r.json())
-      .then((data: Array<{ full_name: string; active: boolean }>) =>
-        setTeamNames((data ?? []).filter(m => m.active).map(m => m.full_name))
-      ).catch(() => {})
+      .then((data: Array<{ full_name: string; active: boolean; files_report: boolean }>) => {
+        const active = (data ?? []).filter(m => m.active)
+        setTeamNames(active.map(m => m.full_name))
+        setReportMembers(active.filter(m => m.files_report).map(m => m.full_name))
+      }).catch(() => {})
   }, [])
 
   useEffect(() => {
@@ -530,16 +533,17 @@ export default function BdPage() {
 
     Promise.all([
       fetch('/api/webwork', { cache: 'no-store' }).then(r => r.json()).catch(() => null),
-      fetch('/api/slack-stats', { cache: 'no-store' }).then(r => r.json()).catch(() => null),
+      // Authoritative filed/missing source — matches week_label in Supabase,
+      // unlike slack-stats' filed/missing which can never attribute a report
+      // submitted through /submit (posted to Slack as the bot, not the user).
+      fetch(`/api/weekly-reports?week_start=${weekStartISO(getMondayOfWeekPT())}`, { cache: 'no-store' }).then(r => r.json()).catch(() => []),
       fetch('/api/clickup-tasks', { cache: 'no-store' }).then(r => r.json()).catch(() => null),
       fetch('/api/invoices', { cache: 'no-store' }).then(r => r.json()).catch(() => null),
-    ]).then(([ww, slack, cu, inv]) => {
+    ]).then(([ww, weeklyReports, cu, inv]) => {
+      setCurrentWeekReports(Array.isArray(weeklyReports) ? weeklyReports : [])
       setKpi({
         teamHours: ww?.members?.reduce((s: number, m: { totalHours: number }) => s + m.totalHours, 0) ?? 0,
         memberHours: ww?.members ?? [],
-        reportsFiled: slack?.weeklyReports?.filed?.length ?? 0,
-        reportsTotal: (slack?.weeklyReports?.filed?.length ?? 0) + (slack?.weeklyReports?.missing?.length ?? 0),
-        reportsMissing: slack?.weeklyReports?.missing ?? [],
         totalTasks: cu?.totalTasks ?? 0,
         overdue: cu?.overdue ?? 0,
         overduePercent: cu?.overduePercent ?? 0,
@@ -602,6 +606,9 @@ export default function BdPage() {
 
   const dealsByStage = (stage: string) =>
     deals.filter(d => d.stage === stage).sort((a, b) => b.score - a.score)
+
+  const filedMembers = reportMembers.filter(name => currentWeekReports.some(r => isReportFrom(r.submitted_by, name)))
+  const missingMembers = reportMembers.filter(name => !filedMembers.includes(name))
 
   // ── Render ────────────────────────────────────────────────────────────────
 
@@ -687,12 +694,12 @@ export default function BdPage() {
               alert: false,
             },
             {
-              value: kpiLoading ? '…' : `${kpi?.reportsFiled ?? 0}/${kpi?.reportsTotal ?? teamNames.length}`,
+              value: kpiLoading ? '…' : `${filedMembers.length}/${reportMembers.length}`,
               label: 'Reports Filed',
-              sub: (kpi?.reportsMissing?.length ?? 0) > 0
-                ? `Missing: ${kpi!.reportsMissing.map(n => n.split(' ')[0]).join(', ')}`
+              sub: missingMembers.length > 0
+                ? `Missing: ${missingMembers.map(n => n.split(' ')[0]).join(', ')}`
                 : 'All filed ✓',
-              alert: !kpiLoading && (kpi?.reportsMissing?.length ?? 0) > 0,
+              alert: !kpiLoading && missingMembers.length > 0,
             },
             {
               value: kpiLoading ? '…' : `${kpi?.overduePercent ?? 0}%`,

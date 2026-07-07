@@ -16,6 +16,7 @@ import DayCalendar from '@/components/DayCalendar'
 import { FiCheck, FiAlertTriangle, FiCheckCircle, FiClock, FiChevronLeft, FiChevronRight } from 'react-icons/fi'
 import Spinner from '@/components/Spinner'
 import { classifySubmission, SUBMIT_STATUS_META, reportDeadlinePassed, type SubmitStatus } from '@/lib/report-status'
+import { isReportFrom } from '@/lib/report-match'
 import type { MeetingPrepRow } from '@/lib/types'
 import {
   nextMeetingDate, adjacentMeetingDate, meetingDeadlinePassed,
@@ -355,6 +356,7 @@ export default function ReportsPage() {
   const [okrs, setOkrs] = useState<OKR[]>([])
   const [slack, setSlack] = useState<SlackData | null>(null)
   const [clickup, setClickUp] = useState<ClickUpData | null>(null)
+  const [currentWeekReports, setCurrentWeekReports] = useState<{ submitted_by: string; created_at: string }[]>([])
   const [meetings, setMeetings] = useState<Meeting[]>([])
   const [loading, setLoading] = useState(true)
   const [lastFetched, setLastFetched] = useState('')
@@ -400,14 +402,19 @@ export default function ReportsPage() {
 
   async function fetchAll(signal?: AbortSignal) {
     setLoading(true)
-    const [s, c, f] = await Promise.all([
+    const [s, c, f, wr] = await Promise.all([
       fetch('/api/slack-stats', { signal, cache: 'no-store' }).then((r) => r.json()).catch(() => null),
       fetch('/api/clickup-tasks', { signal, cache: 'no-store' }).then((r) => r.json()).catch(() => null),
       fetch('/api/fireflies-meetings', { signal, cache: 'no-store' }).then((r) => r.json()).catch(() => null),
+      // Authoritative filed/missing source — matches week_label in Supabase,
+      // unlike slack-stats' filed/missing which can never attribute a report
+      // submitted through /submit (posted to Slack as the bot, not the user).
+      fetch(`/api/weekly-reports?week_start=${weekStartISO(getMondayOfWeekPT())}`, { signal, cache: 'no-store' }).then((r) => r.json()).catch(() => []),
     ])
     setSlack(s)
     setClickUp(c)
     setMeetings(f?.meetings ?? [])
+    setCurrentWeekReports(Array.isArray(wr) ? wr : [])
     setLoading(false)
     setLastFetched(new Date().toLocaleTimeString())
   }
@@ -498,10 +505,11 @@ export default function ReportsPage() {
     return () => ctrl.abort()
   }, [refreshKey])
 
-  const wr = slack?.weeklyReports
-  const filed = wr?.filed ?? []
-  const missing = wr?.missing ?? []
-  const week = wr?.week ?? '—'
+  // Authoritative filed/missing — matched against weekly_reports by week_label,
+  // not slack-stats' Slack-timestamp guess (see fetchAll).
+  const filed = reportMembers.filter(name => currentWeekReports.some(r => isReportFrom(r.submitted_by, name)))
+  const missing = reportMembers.filter(name => !filed.includes(name))
+  const week = fmtWeekLabel(getMondayOfWeekPT())
   const slackStats = slack?.slackStats
 
   // Build full Slack report message

@@ -145,7 +145,7 @@ export async function POST(req: NextRequest) {
     : null
 
   const sb = getSupabase()
-  const { data, error } = await sb.from('weekly_reports').insert({
+  const fields = {
     submitted_by: name,
     week_label: week,
     blockers: body.blockers ?? null,
@@ -160,7 +160,20 @@ export async function POST(req: NextRequest) {
     whats_new: body.whats_new ?? null,
     ai_analysis: aiAnalysis,
     slack_ts: slackTs,
-  }).select('id').single()
+  }
+
+  // Resubmitting for a week you already filed (e.g. correcting the week you
+  // picked) edits that report in place instead of creating a duplicate row.
+  const { data: existing } = await sb
+    .from('weekly_reports')
+    .select('id')
+    .eq('submitted_by', name)
+    .eq('week_label', week)
+    .maybeSingle()
+
+  const { data, error } = existing
+    ? await sb.from('weekly_reports').update(fields).eq('id', existing.id).select('id').single()
+    : await sb.from('weekly_reports').insert(fields).select('id').single()
 
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 500 })
