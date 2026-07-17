@@ -9,7 +9,7 @@ const TABS = [
   { label: 'VCoS-AI', href: '/chatbot' },
   { label: 'Reports', href: '/reports' },
   { label: 'Weekly Report', href: '/submit' },
-  { label: 'Team Meeting', href: '/meeting-prep' },
+  { label: 'Team Meeting Prep', href: '/meeting-prep' },
   { label: 'Compliance', href: '/compliance' },
   { label: 'Invoices', href: '/invoices' },
   { label: 'BD Pipeline', href: '/bd' },

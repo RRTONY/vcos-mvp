@@ -198,9 +198,22 @@ export default function SubmitPage() {
     if (!name) { toast(isAdmin ? 'Please select a name first' : 'Your account is not linked to a team member — contact an admin'); return }
     fd.set('name', name)
 
+    if (selectedMonday.getTime() > currentMonday.getTime()) {
+      toast(`You can't submit a report for a future week (${weekLabel(selectedMonday)}).`)
+      return
+    }
+
     const payload: Record<string, string> = {}
     for (const [k, v] of fd.entries()) {
       payload[k] = v as string
+    }
+    payload.week_start = weekStartISO(selectedMonday)
+
+    const CONTENT_FIELDS = ['blockers', 'escalations', 'priorities', 'goals_met', 'win', 'accomplishments', 'friction', 'went_well', 'support_needed']
+    const isBlank = CONTENT_FIELDS.every(k => !(payload[k] ?? '').trim())
+    if (isBlank) {
+      toast('The weekly report is blank. Please complete the required fields before submitting.')
+      return
     }
 
     setSubmitting(true)
@@ -320,7 +333,7 @@ export default function SubmitPage() {
           </div>
           <div>
             <label className="text-xs font-bold uppercase tracking-widest text-ink3 block mb-1">Report Week <span className="text-danger">*</span></label>
-            <WeekCalendar selectedMonday={selectedMonday} onSelectWeek={setSelectedMonday} />
+            <WeekCalendar selectedMonday={selectedMonday} onSelectWeek={setSelectedMonday} maxMonday={currentMonday} />
             <input type="hidden" name="week" value={weekLabel(selectedMonday)} />
             {prevWeekPending && selectedMonday.getTime() === currentMonday.getTime() && (
               <div className="alert alert-amber items-start justify-between mt-3 mb-0">

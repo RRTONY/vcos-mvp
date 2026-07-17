@@ -12,15 +12,19 @@ const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 
 
 /**
  * Calendar popover for picking a week. Clicking any day selects the Monday of
- * that week. All past and future weeks are selectable. The trigger shows the
- * selected week label — clicking it (or the input area) opens the calendar.
+ * that week. All past weeks are selectable; future weeks are selectable too
+ * unless `maxMonday` caps it (e.g. the weekly-report form disables anything
+ * past the current week). The trigger shows the selected week label —
+ * clicking it (or the input area) opens the calendar.
  */
 export default function WeekCalendar({
   selectedMonday,
   onSelectWeek,
+  maxMonday,
 }: {
   selectedMonday: Date
   onSelectWeek: (monday: Date) => void
+  maxMonday?: Date
 }) {
   const [open, setOpen] = useState(false)
   const [viewMonth, setViewMonth] = useState(() => new Date(Date.UTC(selectedMonday.getUTCFullYear(), selectedMonday.getUTCMonth(), 1, 12)))
@@ -57,8 +61,10 @@ export default function WeekCalendar({
 
   const selWeekTime = mostRecentMonday(selectedMonday).getTime()
   const currentWeekTime = currentWeekMon.getTime()
+  const maxWeekTime = maxMonday ? mostRecentMonday(maxMonday).getTime() : null
 
   function pick(day: Date) {
+    if (maxWeekTime !== null && mostRecentMonday(day).getTime() > maxWeekTime) return
     onSelectWeek(mostRecentMonday(day))
     setOpen(false)
   }
@@ -100,24 +106,28 @@ export default function WeekCalendar({
             ))}
           </div>
 
-          {/* Days — all weeks selectable; current week highlighted with a ring */}
+          {/* Days — all past weeks selectable; future weeks disabled if maxMonday caps them */}
           <div className="grid grid-cols-7 gap-0.5">
             {cells.map((day, i) => {
               if (!day) return <div key={i} />
               const inSelWeek = mostRecentMonday(day).getTime() === selWeekTime
               const isCurrentWeek = mostRecentMonday(day).getTime() === currentWeekTime
               const isToday = day.toDateString() === new Date().toDateString()
+              const disabled = maxWeekTime !== null && mostRecentMonday(day).getTime() > maxWeekTime
               return (
                 <button
                   key={i}
                   type="button"
                   onClick={() => pick(day)}
+                  disabled={disabled}
                   className={`h-7 text-xs rounded flex items-center justify-center transition-colors ${
-                    inSelWeek
+                    disabled
+                      ? 'text-ink4/40 cursor-not-allowed'
+                      : inSelWeek
                       ? 'bg-accent text-white font-bold'
                       : 'text-ink2 hover:bg-sand3'
                   } ${isToday && !inSelWeek ? 'ring-1 ring-accent' : ''} ${isCurrentWeek && !inSelWeek ? 'font-semibold text-ink' : ''}`}
-                  title={fmtWeek(mostRecentMonday(day))}
+                  title={disabled ? 'Future weeks can\'t be selected' : fmtWeek(mostRecentMonday(day))}
                 >
                   {day.getDate()}
                 </button>

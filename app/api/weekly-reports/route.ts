@@ -3,7 +3,7 @@ import Anthropic from '@anthropic-ai/sdk'
 import { postMessage } from '@/lib/slack'
 import { getSupabase } from '@/lib/supabase'
 import { getTeamMemberByUsername } from '@/lib/team-db'
-import { parseWeekStart, fmtWeekRange, weekLabelVariants } from '@/lib/week-utils'
+import { parseWeekStart, fmtWeekRange, weekLabelVariants, getMondayOfWeekPT } from '@/lib/week-utils'
 
 import { SLACK_CHANNEL_WEEKLY_REPORTS } from '@/lib/constants'
 const SLACK_CHANNEL = process.env.SLACK_CHANNEL_WEEKLY_REPORTS ?? SLACK_CHANNEL_WEEKLY_REPORTS
@@ -15,6 +15,7 @@ function isManager(role: string | null): boolean {
 interface ReportBody {
   name: string
   week: string
+  week_start?: string
   blockers?: string
   escalations?: string
   priorities?: string
@@ -104,6 +105,20 @@ export async function POST(req: NextRequest) {
   }
   body.name = name
 
+  // Reject reports for a week that hasn't happened yet.
+  if (body.week_start) {
+    const selectedMonday = parseWeekStart(body.week_start)
+    if (selectedMonday.getTime() > getMondayOfWeekPT().getTime()) {
+      return NextResponse.json({ error: `You can't submit a report for a future week (${week}).` }, { status: 400 })
+    }
+  }
+
+  // Reject a report with every content field left empty.
+  const contentFields = [body.blockers, body.escalations, body.priorities, body.goals_met, body.win, body.accomplishments, body.friction, body.went_well, body.support_needed]
+  if (contentFields.every(f => !f || !f.trim())) {
+    return NextResponse.json({ error: 'The weekly report is blank. Please complete the required fields before submitting.' }, { status: 400 })
+  }
+
   const lines: string[] = [
     '#myweeklyreport',
     '',
@@ -131,11 +146,8 @@ export async function POST(req: NextRequest) {
 
   const slackMsg = lines.join('\n')
 
-  const contentFields = [body.blockers, body.escalations, body.priorities, body.goals_met, body.win, body.accomplishments, body.friction, body.went_well, body.support_needed]
-  const hasContent = contentFields.some(f => f && f.trim().length > 0)
-
   const [analysisResult, slackResult] = await Promise.allSettled([
-    hasContent ? analyzeReport(body) : Promise.resolve(null),
+    analyzeReport(body),
     postMessage(SLACK_CHANNEL, slackMsg),
   ])
 
