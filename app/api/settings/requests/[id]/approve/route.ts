@@ -17,7 +17,9 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
   if (fetchErr || !req_row) return NextResponse.json({ error: 'Request not found' }, { status: 404 })
 
   const username = (req_row.username_requested || req_row.name).toLowerCase().replace(/\s+/g, '')
-  const role = req_row.role_requested || 'user'
+  // Defense in depth: 'owner' can never be granted via a signup-request
+  // approval, regardless of what's stored in role_requested.
+  const role = req_row.role_requested === 'admin' ? 'admin' : 'user'
   const tempPassword = generateTempPassword()
   const password_hash = await hashPassword(tempPassword)
 

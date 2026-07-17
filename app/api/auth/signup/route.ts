@@ -5,14 +5,17 @@ export const dynamic = 'force-dynamic'
 
 export async function POST(req: NextRequest) {
   try {
-    const { name, email, username_requested, role_requested, message } = await req.json()
+    const { name, email, username_requested, message } = await req.json()
     if (!name) return NextResponse.json({ error: 'Name required' }, { status: 400 })
 
+    // role_requested is never taken from the request body — the signup form
+    // has no role selector, so any non-'user' value here would only come
+    // from someone calling this API directly to self-nominate for admin/owner.
     const { error } = await supabase.from('vcos_signup_requests').insert({
       name,
       email,
       username_requested,
-      role_requested: role_requested || 'user',
+      role_requested: 'user',
       message,
       status: 'pending',
     })
@@ -29,7 +32,7 @@ export async function POST(req: NextRequest) {
           headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${slackToken}` },
           body: JSON.stringify({
             channel: adminChannel,
-            text: `🔔 New VCOS access request from *${name}*${email ? ` (${email})` : ''}\nRequested username: ${username_requested || '—'} · Role: ${role_requested || 'user'}\n${message ? `Message: ${message}` : ''}\nApprove at /settings/requests`,
+            text: `🔔 New VCOS access request from *${name}*${email ? ` (${email})` : ''}\nRequested username: ${username_requested || '—'}\n${message ? `Message: ${message}` : ''}\nApprove at /settings/requests`,
           }),
         })
       }

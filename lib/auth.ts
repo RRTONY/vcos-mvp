@@ -4,8 +4,13 @@
 export const COOKIE_NAME = 'vcos_session'
 const DAYS_30 = 30 * 24 * 60 * 60 * 1000
 
+// No hardcoded fallback: a known-in-source signing secret would let anyone
+// forge a valid session (any username/role, including owner) in any
+// deployment where AUTH_SECRET is unset. Fail loudly instead.
 function getSecret(): string {
-  return process.env.AUTH_SECRET ?? 'vcos-fallback-secret-change-me'
+  const secret = process.env.AUTH_SECRET
+  if (!secret) throw new Error('AUTH_SECRET must be set — refusing to sign/verify sessions with no secret configured')
+  return secret
 }
 
 function toBase64url(input: Uint8Array | ArrayBuffer): string {
