@@ -2,11 +2,53 @@ import { NextRequest, NextResponse } from 'next/server'
 import Anthropic from '@anthropic-ai/sdk'
 import { postMessage } from '@/lib/slack'
 import { getSupabase } from '@/lib/supabase'
-import { getTeamMemberByUsername } from '@/lib/team-db'
+import { getTeamMemberByUsername, getTeamMembers } from '@/lib/team-db'
 import { parseWeekStart, fmtWeekRange, weekLabelVariants, getMondayOfWeekPT } from '@/lib/week-utils'
+import { getCachedSWR } from '@/lib/api-cache'
+import { openTasksFor, topDueTasks, TASK_STATUS_LABELS, type TaskReviewStatus } from '@/lib/open-tasks'
+import { bucketFor } from '@/lib/due-buckets'
+import type { ClickUpData } from '@/lib/types'
 
-import { SLACK_CHANNEL_WEEKLY_REPORTS } from '@/lib/constants'
+import { SLACK_CHANNEL_WEEKLY_REPORTS, CACHE_TTL_SYSTEMS_MS } from '@/lib/constants'
 const SLACK_CHANNEL = process.env.SLACK_CHANNEL_WEEKLY_REPORTS ?? SLACK_CHANNEL_WEEKLY_REPORTS
+
+// Builds the "Your Open Tasks" block for a single reporter — never includes
+// another team member's tasks, so this is always computed from that
+// reporter's own ClickUp key, not from the full team snapshot. Task identity,
+// name, and due date always come from ClickUp (not the client); the status
+// and blocker note per task are the reporter's own submitted answers.
+async function buildOpenTasksBlock(name: string, taskStatusesRaw?: string): Promise<string> {
+  const [clickupResult, teamMembers] = await Promise.all([
+    getCachedSWR<ClickUpData>('clickup', CACHE_TTL_SYSTEMS_MS),
+    getTeamMembers(),
+  ])
+  const member = teamMembers.find(m => m.full_name === name)
+  const fallbackFirstName = name.split(' ')[0]
+  const allTasks = openTasksFor(clickupResult.data?.tasksByAssignee, member?.clickup_key, fallbackFirstName)
+  const tasks = topDueTasks(allTasks)
+  if (tasks.length === 0) return '_No tasks with a due date right now — nice and clear._'
+
+  const statusMap = new Map<string, { status: TaskReviewStatus; note: string }>()
+  if (taskStatusesRaw) {
+    try {
+      const parsed = JSON.parse(taskStatusesRaw) as Array<{ id: string; status: TaskReviewStatus; note?: string }>
+      for (const p of parsed) if (p?.id && p.status in TASK_STATUS_LABELS) statusMap.set(p.id, { status: p.status, note: (p.note ?? '').trim() })
+    } catch { /* malformed — fall back to "Not reviewed" for every task */ }
+  }
+
+  const now = new Date()
+  const lines = tasks.map(t => {
+    const entry = statusMap.get(t.id)
+    const label = entry ? TASK_STATUS_LABELS[entry.status] : 'Not reviewed'
+    const overdueFlag = bucketFor(t.dueTs, now) === 'overdue' ? ' *(OVERDUE)*' : ''
+    let line = `• <${t.url}|${t.name}> — due ${t.dueDate}${overdueFlag} — *${label}*`
+    if (entry && (entry.status === 'at_risk' || entry.status === 'blocked') && entry.note) {
+      line += `\n   ${entry.note}`
+    }
+    return line
+  })
+  return lines.join('\n')
+}
 
 function isManager(role: string | null): boolean {
   return role === 'admin' || role === 'owner'
@@ -26,6 +68,7 @@ interface ReportBody {
   went_well?: string
   support_needed?: string
   whats_new?: string
+  task_statuses?: string
 }
 
 interface AiAnalysis {
@@ -119,10 +162,14 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'The weekly report is blank. Please complete the required fields before submitting.' }, { status: 400 })
   }
 
+  const openTasksBlock = await buildOpenTasksBlock(name, body.task_statuses)
+
   const lines: string[] = [
     '#myweeklyreport',
     '',
     `*Weekly Report — ${name} — ${week}*`,
+    '',
+    `*0. Your Open Tasks*\n${openTasksBlock}`,
     '',
     `*1. What is blocked, stuck, or at risk right now?*\n${body.blockers || '—'}`,
     '',
