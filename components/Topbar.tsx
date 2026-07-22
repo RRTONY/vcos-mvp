@@ -30,6 +30,34 @@ export default function Topbar() {
     setRefreshing(false)
   }, [triggerRefresh])
 
+  // ── Self-heal ────────────────────────────────────────────────────────────
+  // The daily Netlify scheduled refresh (netlify/functions/cron-refresh.ts) can
+  // silently stop firing (it has before — cache went 18 days stale with no
+  // alert). Rather than depend solely on that external cron, whoever opens the
+  // app checks whether the cache is badly stale (not the routine few-minutes
+  // staleness the SWR cache expects, but a sign the daily job actually missed
+  // a day) and triggers the same live refresh the button above does. Gated by
+  // a per-browser cooldown so a still-broken upstream API isn't hammered.
+  useEffect(() => {
+    const STALE_MINUTES_THRESHOLD = 12 * 60 // routine cache age is fine; only self-heal once the daily job has clearly missed
+    const COOLDOWN_MS = 6 * 60 * 60 * 1000
+    const STORAGE_KEY = 'vcos-auto-heal-at'
+    const SOURCES = ['clickup-tasks', 'slack-stats', 'webwork', 'fireflies-meetings']
+
+    let lastAttempt = 0
+    try { lastAttempt = Number(localStorage.getItem(STORAGE_KEY) ?? 0) } catch { /* private mode */ }
+    if (Date.now() - lastAttempt < COOLDOWN_MS) return
+
+    Promise.all(
+      SOURCES.map(s => fetch(`/api/${s}`, { cache: 'no-store' }).then(r => r.json()).catch(() => null))
+    ).then((results) => {
+      const needsHeal = results.some(r => r && typeof r._ageMinutes === 'number' && r._ageMinutes > STALE_MINUTES_THRESHOLD)
+      if (!needsHeal) return
+      try { localStorage.setItem(STORAGE_KEY, String(Date.now())) } catch { /* private mode */ }
+      Promise.allSettled(SOURCES.map(s => fetch(`/api/${s}`, { method: 'POST' }))).then(() => triggerRefresh())
+    })
+  }, [triggerRefresh])
+
   const handleLogout = useCallback(async () => {
     await fetch('/api/auth/logout', { method: 'POST' })
     router.push('/login')
