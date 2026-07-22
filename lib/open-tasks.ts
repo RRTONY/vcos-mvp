@@ -1,7 +1,6 @@
 // Shared "this person's open ClickUp tasks" lookup — used by Open Loops and
 // the weekly report's "Your Open Tasks" section. Always scoped to a single
 // assignee; never returns another team member's tasks.
-import { bucketFor } from './due-buckets'
 import type { Task } from './types'
 
 /** Find the tasksByAssignee key that matches a ClickUp key (usernames are
@@ -24,18 +23,14 @@ export function openTasksFor(
   return key ? tasksByAssignee![key] : []
 }
 
-export function overdueOf(tasks: Task[], now: Date = new Date()): Task[] {
-  return tasks.filter(t => bucketFor(t.dueTs, now) === 'overdue')
-}
-
-/** Tasks with no due date carry no accountability date, so the weekly report's
- *  "Your Open Tasks" section drops them entirely — only tasks with a real due
- *  date are shown, soonest/most-overdue first, capped to the top 10. */
-export function topDueTasks(tasks: Task[], limit = 10): Task[] {
+/** Only tasks with a real due date, soonest/most-overdue first — tasks with
+ *  no due date carry no accountability date, so the weekly report's "Your
+ *  Open Tasks" section drops them entirely. No cap — every due-dated task
+ *  is included. */
+export function dueDateTasksOnly(tasks: Task[]): Task[] {
   return tasks
     .filter((t): t is Task & { dueTs: number } => t.dueTs != null)
     .sort((a, b) => a.dueTs - b.dueTs)
-    .slice(0, limit)
 }
 
 export type TaskReviewStatus = 'on_track' | 'at_risk' | 'blocked' | 'done'

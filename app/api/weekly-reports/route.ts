@@ -5,19 +5,22 @@ import { getSupabase } from '@/lib/supabase'
 import { getTeamMemberByUsername, getTeamMembers } from '@/lib/team-db'
 import { parseWeekStart, fmtWeekRange, weekLabelVariants, getMondayOfWeekPT } from '@/lib/week-utils'
 import { getCachedSWR } from '@/lib/api-cache'
-import { openTasksFor, topDueTasks, TASK_STATUS_LABELS, type TaskReviewStatus } from '@/lib/open-tasks'
+import { openTasksFor, dueDateTasksOnly, TASK_STATUS_LABELS, type TaskReviewStatus } from '@/lib/open-tasks'
 import { bucketFor } from '@/lib/due-buckets'
 import type { ClickUpData } from '@/lib/types'
 
 import { SLACK_CHANNEL_WEEKLY_REPORTS, CACHE_TTL_SYSTEMS_MS } from '@/lib/constants'
 const SLACK_CHANNEL = process.env.SLACK_CHANNEL_WEEKLY_REPORTS ?? SLACK_CHANNEL_WEEKLY_REPORTS
 
-// Builds the "Your Open Tasks" block for a single reporter — never includes
+// Builds one line per open task for a single reporter — never includes
 // another team member's tasks, so this is always computed from that
 // reporter's own ClickUp key, not from the full team snapshot. Task identity,
 // name, and due date always come from ClickUp (not the client); the status
 // and blocker note per task are the reporter's own submitted answers.
-async function buildOpenTasksBlock(name: string, taskStatusesRaw?: string): Promise<string> {
+// Returned as individual lines (not one joined string) so the caller can pack
+// them into Slack messages that stay under Slack's length limit without ever
+// splitting a task away from its own note.
+async function buildOpenTasksLines(name: string, taskStatusesRaw?: string): Promise<string[]> {
   const [clickupResult, teamMembers] = await Promise.all([
     getCachedSWR<ClickUpData>('clickup', CACHE_TTL_SYSTEMS_MS),
     getTeamMembers(),
@@ -25,8 +28,8 @@ async function buildOpenTasksBlock(name: string, taskStatusesRaw?: string): Prom
   const member = teamMembers.find(m => m.full_name === name)
   const fallbackFirstName = name.split(' ')[0]
   const allTasks = openTasksFor(clickupResult.data?.tasksByAssignee, member?.clickup_key, fallbackFirstName)
-  const tasks = topDueTasks(allTasks)
-  if (tasks.length === 0) return '_No tasks with a due date right now — nice and clear._'
+  const tasks = dueDateTasksOnly(allTasks)
+  if (tasks.length === 0) return [`_No tasks with a due date right now — nice and clear._\nOwner: ${name}`]
 
   const statusMap = new Map<string, { status: TaskReviewStatus; note: string }>()
   if (taskStatusesRaw) {
@@ -37,17 +40,65 @@ async function buildOpenTasksBlock(name: string, taskStatusesRaw?: string): Prom
   }
 
   const now = new Date()
-  const lines = tasks.map(t => {
+  return tasks.map(t => {
     const entry = statusMap.get(t.id)
     const label = entry ? TASK_STATUS_LABELS[entry.status] : 'Not reviewed'
     const overdueFlag = bucketFor(t.dueTs, now) === 'overdue' ? ' *(OVERDUE)*' : ''
-    let line = `• <${t.url}|${t.name}> — due ${t.dueDate}${overdueFlag} — *${label}*`
+    let line = `• <${t.url}|${t.name}> — Owner: ${name} — due ${t.dueDate}${overdueFlag} — *${label}*`
     if (entry && (entry.status === 'at_risk' || entry.status === 'blocked') && entry.note) {
       line += `\n   ${entry.note}`
     }
     return line
   })
-  return lines.join('\n')
+}
+
+// Slack's chat.postMessage silently mangles very long text (truncates or, at
+// certain lengths, drops content) rather than erroring — confirmed by testing
+// directly against the API. With the open-tasks list now uncapped, a single
+// weekly report can easily exceed that, so long reports are split into
+// multiple sequential messages instead, each kept under a safe length and
+// clearly labeled as a continuation.
+const SLACK_CHUNK_LIMIT = 3000
+
+// A single atom (e.g. one Q&A answer) can itself exceed the chunk limit if
+// someone pastes in a lot of text — fall back to splitting it by line so no
+// individual piece we hand to Slack is ever oversized on its own.
+function splitOversizedAtom(atom: string, limit: number): string[] {
+  return atom.length <= limit ? [atom] : atom.split('\n')
+}
+
+function chunkIntoMessages(atomsIn: string[], limit: number): string[] {
+  const atoms = atomsIn.flatMap(a => splitOversizedAtom(a, limit))
+  const chunks: string[] = []
+  let current: string[] = []
+  for (const atom of atoms) {
+    const candidate = [...current, atom].join('\n\n')
+    if (current.length > 0 && candidate.length > limit) {
+      chunks.push(current.join('\n\n'))
+      current = [atom]
+    } else {
+      current.push(atom)
+    }
+  }
+  if (current.length > 0) chunks.push(current.join('\n\n'))
+  return chunks
+}
+
+// Posts the report as one or more sequential Slack messages and returns the
+// first message's ts (used to locate/edit the report later). Best-effort per
+// chunk — a failure on one chunk doesn't stop the rest from posting.
+async function postWeeklyReportMessage(channel: string, name: string, week: string, atoms: string[]): Promise<string | null> {
+  const chunks = chunkIntoMessages(atoms, SLACK_CHUNK_LIMIT)
+  const continuationHeader = `*Weekly Report — ${name} — ${week} (continued)*`
+  let firstTs: string | null = null
+  for (let i = 0; i < chunks.length; i++) {
+    const text = i === 0 ? chunks[i] : `${continuationHeader}\n\n${chunks[i]}`
+    try {
+      const result = await postMessage(channel, text) as { ts?: string }
+      if (i === 0) firstTs = result?.ts ?? null
+    } catch { /* best-effort */ }
+  }
+  return firstTs
 }
 
 function isManager(role: string | null): boolean {
@@ -162,46 +213,32 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'The weekly report is blank. Please complete the required fields before submitting.' }, { status: 400 })
   }
 
-  const openTasksBlock = await buildOpenTasksBlock(name, body.task_statuses)
+  const openTasksLines = await buildOpenTasksLines(name, body.task_statuses)
 
-  const lines: string[] = [
+  const atoms: string[] = [
     '#myweeklyreport',
-    '',
     `*Weekly Report — ${name} — ${week}*`,
-    '',
-    `*0. Your Open Tasks*\n${openTasksBlock}`,
-    '',
-    `*1. What is blocked, stuck, or at risk right now?*\n${body.blockers || '—'}`,
-    '',
+    '*0. Your Open Tasks*',
+    ...openTasksLines,
+    `*1. Beyond the open tasks listed above, is anything else blocked, stuck, or at risk right now?*\n${body.blockers || '—'}`,
     `*2. Is anything broken, behind, or needs to be escalated?*\n${body.escalations || '—'}`,
-    '',
-    `*3. Top 3–5 priorities for next week*\n${body.priorities || '—'}`,
-    '',
-    `*4. Last week's priorities — done vs. not done*\n${body.goals_met || '—'}`,
-    '',
+    `*3. Top 3–5 priorities for next week — each with a specific date you're committing to*\n${body.priorities || '—'}`,
+    `*4. Last week's priorities — including the open tasks listed above — done vs. not done*\n${body.goals_met || '—'}`,
     `*5. Most important accomplishment & business impact*\n${body.win || '—'}`,
-    '',
     `*6. Full accomplishments by area*\n${body.accomplishments || '—'}`,
-    '',
     `*7. What didn't go well — and what should change?*\n${body.friction || '—'}`,
-    '',
     `*8. What went well that's worth repeating or recognizing?*\n${body.went_well || '—'}`,
-    '',
-    `*9. What you need from others*\n${body.support_needed || '—'}`,
+    `*9. What you need from others to support you — including anyone blocking the open tasks listed above*\n${body.support_needed || '—'}`,
   ]
-  if (body.whats_new) lines.push('', `*10. Personal notes*\n${body.whats_new}`)
-
-  const slackMsg = lines.join('\n')
+  if (body.whats_new) atoms.push(`*10. Personal notes*\n${body.whats_new}`)
 
   const [analysisResult, slackResult] = await Promise.allSettled([
     analyzeReport(body),
-    postMessage(SLACK_CHANNEL, slackMsg),
+    postWeeklyReportMessage(SLACK_CHANNEL, name, week, atoms),
   ])
 
   const aiAnalysis = analysisResult.status === 'fulfilled' ? analysisResult.value : null
-  const slackTs = slackResult.status === 'fulfilled'
-    ? (slackResult.value as { ts?: string })?.ts ?? null
-    : null
+  const slackTs = slackResult.status === 'fulfilled' ? slackResult.value : null
 
   const sb = getSupabase()
   const fields = {

@@ -9,7 +9,7 @@ import Spinner from '@/components/Spinner'
 import WeekCalendar from '@/components/WeekCalendar'
 import RichTextEditor from '@/components/RichTextEditor'
 import { bucketFor } from '@/lib/due-buckets'
-import { openTasksFor, topDueTasks, TASK_STATUS_LABELS, type TaskReviewStatus } from '@/lib/open-tasks'
+import { openTasksFor, dueDateTasksOnly, TASK_STATUS_LABELS, type TaskReviewStatus } from '@/lib/open-tasks'
 import { htmlToSlackMrkdwn } from '@/lib/slack-format'
 import type { ClickUpData } from '@/lib/types'
 
@@ -156,9 +156,9 @@ export default function SubmitPage() {
   }, [selectedName, clickupData, teamRows])
 
   // Tasks with no due date carry no accountability date, so they're dropped
-  // entirely here — only the top 10 (soonest/most-overdue first) with a real
-  // due date get a status + follow-up question.
-  const topTasks = useMemo(() => topDueTasks(myOpenTasks), [myOpenTasks])
+  // entirely — every remaining task (soonest/most-overdue first, no cap)
+  // gets a status + follow-up question.
+  const topTasks = useMemo(() => dueDateTasksOnly(myOpenTasks), [myOpenTasks])
 
   const myOverdueCount = useMemo(
     () => topTasks.filter(t => bucketFor(t.dueTs) === 'overdue').length,
@@ -467,6 +467,9 @@ export default function SubmitPage() {
                       <span className="text-xs whitespace-nowrap shrink-0 text-ink4">
                         Due {t.dueDate}{overdue ? ' · OVERDUE' : ''}
                       </span>
+                    </div>
+                    <div className="text-[10px] font-bold uppercase tracking-widest text-ink4 mb-2">
+                      Owner: {selectedName}
                     </div>
                     <select
                       className="field-input text-sm"
