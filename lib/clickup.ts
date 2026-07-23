@@ -12,6 +12,7 @@ interface CUTask {
   list?: { id: string; name: string }
   folder?: { id?: string; name?: string }
   assignees?: Array<{ username?: string; email?: string; id?: string; profilePicture?: string | null; initials?: string; color?: string }>
+  parent?: string | null
 }
 
 function isExcluded(t: CUTask): boolean {
@@ -29,6 +30,7 @@ function taskDetail(t: CUTask) {
     priority: t.priority?.priority ?? '',
     url: t.url ?? `https://app.clickup.com/t/${t.id}`,
     assignees: (t.assignees ?? []).map((a) => a.username ?? a.email ?? '').filter(Boolean),
+    isSubtask: !!t.parent,
   }
 }
 

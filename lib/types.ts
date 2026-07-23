@@ -9,6 +9,7 @@ export interface Task {
   priority: string;
   url: string;
   assignees: string[];
+  isSubtask: boolean;
 }
 
 export interface AssigneeStat {

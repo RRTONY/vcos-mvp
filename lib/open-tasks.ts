@@ -26,10 +26,16 @@ export function openTasksFor(
 /** Only tasks with a real due date, soonest/most-overdue first — tasks with
  *  no due date carry no accountability date, so the weekly report's "Your
  *  Open Tasks" section drops them entirely. No cap — every due-dated task
- *  is included. */
+ *  is included.
+ *
+ *  CRM-list task names are the client (e.g. "Lia Dispute with Simone
+ *  Giacomelli"), not the action — the real work lives on its subtasks, so a
+ *  CRM parent task's own due date isn't meaningful accountability. Only CRM
+ *  subtasks are kept; every other list is unaffected. */
 export function dueDateTasksOnly(tasks: Task[]): Task[] {
   return tasks
     .filter((t): t is Task & { dueTs: number } => t.dueTs != null)
+    .filter(t => t.list.toLowerCase() !== 'crm' || t.isSubtask)
     .sort((a, b) => a.dueTs - b.dueTs)
 }
 
