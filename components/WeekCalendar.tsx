@@ -16,15 +16,21 @@ const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 
  * unless `maxMonday` caps it (e.g. the weekly-report form disables anything
  * past the current week). The trigger shows the selected week label —
  * clicking it (or the input area) opens the calendar.
+ *
+ * Pass `compact` when this sits next to a label that already shows the
+ * selected week (e.g. inline prev/next week nav) — it shrinks the trigger to
+ * an icon-only button instead of repeating the week text in a full-width box.
  */
 export default function WeekCalendar({
   selectedMonday,
   onSelectWeek,
   maxMonday,
+  compact = false,
 }: {
   selectedMonday: Date
   onSelectWeek: (monday: Date) => void
   maxMonday?: Date
+  compact?: boolean
 }) {
   const [open, setOpen] = useState(false)
   const [viewMonth, setViewMonth] = useState(() => new Date(Date.UTC(selectedMonday.getUTCFullYear(), selectedMonday.getUTCMonth(), 1, 12)))
@@ -70,20 +76,31 @@ export default function WeekCalendar({
   }
 
   return (
-    <div className="relative w-full" ref={ref}>
+    <div className={`relative ${compact ? '' : 'w-full'}`} ref={ref}>
       {/* Trigger — clicking anywhere on this row opens the calendar */}
-      <button
-        type="button"
-        onClick={() => setOpen(v => !v)}
-        className="field-input w-full flex items-center justify-between gap-2 text-left cursor-pointer hover:bg-sand3 transition-colors"
-        title="Click to pick a week"
-      >
-        <span className="font-semibold text-ink">{fmtWeek(selectedMonday)}</span>
-        <FiCalendar className="w-4 h-4 text-ink4 shrink-0" aria-hidden />
-      </button>
+      {compact ? (
+        <button
+          type="button"
+          onClick={() => setOpen(v => !v)}
+          className="text-ink4 hover:text-ink w-8 h-8 flex items-center justify-center rounded hover:bg-sand3 transition-colors"
+          title="Pick a week"
+        >
+          <FiCalendar className="w-4 h-4" aria-hidden />
+        </button>
+      ) : (
+        <button
+          type="button"
+          onClick={() => setOpen(v => !v)}
+          className="field-input w-full flex items-center justify-between gap-2 text-left cursor-pointer hover:bg-sand3 transition-colors"
+          title="Click to pick a week"
+        >
+          <span className="font-semibold text-ink">{fmtWeek(selectedMonday)}</span>
+          <FiCalendar className="w-4 h-4 text-ink4 shrink-0" aria-hidden />
+        </button>
+      )}
 
       {open && (
-        <div className="absolute z-50 mt-1 left-0 bg-sand border border-sand4 rounded-lg shadow-card-md p-3 w-[17rem]">
+        <div className={`absolute z-50 mt-1 bg-sand border border-sand4 rounded-lg shadow-card-md p-3 w-[17rem] ${compact ? 'right-0' : 'left-0'}`}>
           {/* Month nav */}
           <div className="flex items-center justify-between mb-2">
             <button

@@ -4,12 +4,21 @@ export interface Task {
   id: string;
   name: string;
   list: string;
+  listId: string;
+  status: string;
+  statusColor: string;
   dueDate: string;
   dueTs: number | null;
   priority: string;
   url: string;
   assignees: string[];
   isSubtask: boolean;
+}
+
+export interface ClickUpStatus {
+  status: string;
+  color: string;
+  type: string;
 }
 
 export interface AssigneeStat {
@@ -52,6 +61,27 @@ export interface WebWorkMember {
   totalHours: number;
   lastWeekHours?: number;
   byDay: { date: string; hours: number }[];
+  incomplete?: boolean;
+}
+
+export interface ProjectTaskEntry {
+  task: string;
+  minutes: number;
+  hours: number;
+}
+
+export interface ProjectMemberBreakdown {
+  username: string;
+  minutes: number;
+  hours: number;
+  tasks: ProjectTaskEntry[];
+}
+
+export interface ProjectBreakdown {
+  project: string;
+  minutes: number;
+  hours: number;
+  members: ProjectMemberBreakdown[];
 }
 
 export interface Meeting {

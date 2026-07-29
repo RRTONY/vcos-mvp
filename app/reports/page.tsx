@@ -12,7 +12,6 @@ import StaleBadge from '@/components/StaleBadge'
 import TabBar from '@/components/TabBar'
 import MeetingTimeline from '@/components/MeetingTimeline'
 import WeekCalendar from '@/components/WeekCalendar'
-import DayCalendar from '@/components/DayCalendar'
 import { FiCheck, FiAlertTriangle, FiCheckCircle, FiClock, FiChevronLeft, FiChevronRight } from 'react-icons/fi'
 import Spinner from '@/components/Spinner'
 import { classifySubmission, SUBMIT_STATUS_META, reportDeadlinePassed, type SubmitStatus } from '@/lib/report-status'
@@ -30,18 +29,6 @@ const DayStackedBar = dynamic(() => import('@/components/charts/DayStackedBar'),
 const SlackHeatMap = dynamic(() => import('@/components/charts/SlackHeatMap'), { ssr: false })
 
 // ─── Types ──────────────────────────────────────────────────────────────────
-
-interface DailyReport {
-  report_date: string
-  reports_filed: string[]
-  reports_missing: string[]
-  overdue_count: number
-  urgent_count: number
-  total_tasks: number
-  team_hours: Record<string, number>
-  slack_message_ts: string | null
-}
-
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
@@ -203,20 +190,9 @@ interface WeeklyReportFull {
   ai_analysis: { summary: string; insights: string[]; actions: string[] } | null
 }
 
-import { getMondayOfWeekPT, shiftWeeks, fmtWeekRange, weekStartISO, todayPT } from '@/lib/week-utils'
+import { getMondayOfWeekPT, shiftWeeks, fmtWeekRange, weekStartISO } from '@/lib/week-utils'
 const getMostRecentMonday = getMondayOfWeekPT
 const fmtWeekLabel = fmtWeekRange
-
-function hoursForMember(report: DailyReport | null, member: TeamMember): number | null {
-  if (!report?.team_hours) return null
-  const key = member.cuKey.toLowerCase()
-  const firstName = member.name.split(' ')[0].toLowerCase()
-  const entry = Object.entries(report.team_hours).find(([uname]) => {
-    const u = uname.toLowerCase()
-    return u.includes(key) || key.includes(u) || u.includes(firstName) || firstName.includes(u)
-  })
-  return entry ? entry[1] : null
-}
 
 function ReportField({ label, value }: { label: string; value: string | null }) {
   if (!value) return null
@@ -350,7 +326,7 @@ function MeetingPrepCard({ r }: { r: MeetingPrepRow }) {
 }
 
 export default function ReportsPage() {
-  const [tab, setTab] = useState<'weekly' | 'submitted' | 'daily' | 'hours' | 'meeting'>('weekly')
+  const [tab, setTab] = useState<'weekly' | 'submitted' | 'hours' | 'meeting'>('weekly')
   const [reportMembers, setReportMembers] = useState<string[]>([])
   const [team, setTeam] = useState<TeamMember[]>([])
   const [okrs, setOkrs] = useState<OKR[]>([])
@@ -361,18 +337,13 @@ export default function ReportsPage() {
   const [loading, setLoading] = useState(true)
   const [lastFetched, setLastFetched] = useState('')
   const { isAdmin, me } = useMe()
-  const [dailyHistory, setDailyHistory] = useState<DailyReport[]>([])
-  const [dailyLoading, setDailyLoading] = useState(false)
-  const [selectedDailyDate, setSelectedDailyDate] = useState<string>(() => todayPT())
-  const [selectedDailyReport, setSelectedDailyReport] = useState<DailyReport | null>(null)
-  const [selectedDailyLoading, setSelectedDailyLoading] = useState(false)
-  const [generatingReport, setGeneratingReport] = useState(false)
   const [weekMon, setWeekMon] = useState<Date>(() => getMostRecentMonday(new Date()))
   const [weekReports, setWeekReports] = useState<WeeklyReportFull[]>([])
   const [weekReportsLoading, setWeekReportsLoading] = useState(false)
   const [filterMember, setFilterMember] = useState('')
-  const [webworkData, setWebworkData] = useState<{ week: string[]; lastWeek?: string[]; members: WebWorkMember[]; error?: string } | null>(null)
+  const [webworkData, setWebworkData] = useState<{ week: string[]; lastWeek?: string[]; members: WebWorkMember[]; error?: string; incomplete?: boolean } | null>(null)
   const [webworkLoading, setWebworkLoading] = useState(false)
+  const [hoursWeekMon, setHoursWeekMon] = useState<Date>(() => getMostRecentMonday(new Date()))
   const [meetingDate, setMeetingDate] = useState<Date>(() => nextMeetingDate())
   const [meetingSubmissions, setMeetingSubmissions] = useState<MeetingPrepRow[]>([])
   const [meetingLoading, setMeetingLoading] = useState(false)
@@ -419,16 +390,26 @@ export default function ReportsPage() {
     setLastFetched(new Date().toLocaleTimeString())
   }
 
-  async function fetchDailyHistory() {
-    setDailyLoading(true)
-    const res = await fetch('/api/reports/daily').then(r => r.json()).catch(() => [])
-    setDailyHistory(res ?? [])
-    setDailyLoading(false)
+  async function fetchWebwork(monday: Date) {
+    setWebworkLoading(true)
+    // Only the current week is cached server-side; any other week is fetched live.
+    const isCurrent = monday.getTime() === getMostRecentMonday(new Date()).getTime()
+    const url = isCurrent ? '/api/webwork' : `/api/webwork?week_start=${weekStartISO(monday)}`
+    const res = await fetch(url, { cache: 'no-store' }).then(r => r.json()).catch(() => null)
+    setWebworkData(res)
+    setWebworkLoading(false)
   }
 
-  async function fetchWebwork() {
+  // "Retry" needs to actually re-pull from WebWork, not just re-read the same
+  // stale cache — for the current week, GET only reads Supabase's cache, so a
+  // failed/incomplete snapshot would come back unchanged. POST forces a live
+  // fetch and refreshes that cache; other weeks already fetch live on GET.
+  async function retryWebwork(monday: Date) {
     setWebworkLoading(true)
-    const res = await fetch('/api/webwork').then(r => r.json()).catch(() => null)
+    const isCurrent = monday.getTime() === getMostRecentMonday(new Date()).getTime()
+    const res = isCurrent
+      ? await fetch('/api/webwork', { method: 'POST' }).then(r => r.json()).catch(() => null)
+      : await fetch(`/api/webwork?week_start=${weekStartISO(monday)}`, { cache: 'no-store' }).then(r => r.json()).catch(() => null)
     setWebworkData(res)
     setWebworkLoading(false)
   }
@@ -439,14 +420,6 @@ export default function ReportsPage() {
     const res = await fetch(`/api/weekly-reports?week_start=${weekStart}`, { cache: 'no-store' }).then(r => r.json()).catch(() => [])
     setWeekReports(Array.isArray(res) ? res : [])
     setWeekReportsLoading(false)
-  }
-
-  async function generateNow() {
-    setGeneratingReport(true)
-    await fetch('/api/reports/daily', { method: 'POST' })
-    await fetchDailyHistory()
-    setSelectedDailyDate(todayPT())
-    setGeneratingReport(false)
   }
 
   async function fetchMeetingPrep(date: Date) {
@@ -464,8 +437,7 @@ export default function ReportsPage() {
   }, [])
 
   useEffect(() => {
-    if (tab === 'daily') fetchDailyHistory()
-    if (tab === 'hours') fetchWebwork()
+    if (tab === 'hours') fetchWebwork(hoursWeekMon)
     if (tab === 'submitted') fetchSubmittedForWeek(weekMon)
     if (tab === 'meeting') fetchMeetingPrep(meetingDate)
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -476,26 +448,15 @@ export default function ReportsPage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [meetingDate])
 
-  // Resolve the report for the calendar-selected day: use the already-fetched
-  // history if it's in the last 30 days, otherwise fetch that single date.
-  useEffect(() => {
-    if (tab !== 'daily') return
-    const cached = dailyHistory.find(r => r.report_date === selectedDailyDate)
-    if (cached) { setSelectedDailyReport(cached); setSelectedDailyLoading(false); return }
-    if (dailyLoading) return
-    setSelectedDailyLoading(true)
-    fetch(`/api/reports/daily?date=${selectedDailyDate}`)
-      .then(r => r.json())
-      .then(res => setSelectedDailyReport(res ?? null))
-      .catch(() => setSelectedDailyReport(null))
-      .finally(() => setSelectedDailyLoading(false))
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tab, selectedDailyDate, dailyHistory, dailyLoading])
-
   useEffect(() => {
     if (tab === 'submitted') fetchSubmittedForWeek(weekMon)
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [weekMon])
+
+  useEffect(() => {
+    if (tab === 'hours') fetchWebwork(hoursWeekMon)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [hoursWeekMon])
 
   useEffect(() => {
     if (refreshKey === prevKey.current) return
@@ -533,7 +494,6 @@ export default function ReportsPage() {
     { id: 'weekly', label: 'Weekly Roll-Up' },
     { id: 'submitted', label: 'Submitted Reports' },
     { id: 'meeting', label: 'Team Meeting' },
-    { id: 'daily', label: 'Daily History' },
     { id: 'hours', label: 'Team Hours' },
   ] as const
 
@@ -541,20 +501,7 @@ export default function ReportsPage() {
     <div>
       {/* Tab bar */}
       <div className="mt-6">
-        <TabBar
-          tabs={TABS}
-          active={tab}
-          onChange={setTab}
-          right={isAdmin && tab === 'daily' ? (
-            <button
-              onClick={generateNow}
-              disabled={generatingReport}
-              className="btn-primary text-xs py-1 px-3"
-            >
-              {generatingReport ? 'Generating…' : 'Generate Now'}
-            </button>
-          ) : undefined}
-        />
+        <TabBar tabs={TABS} active={tab} onChange={setTab} />
       </div>
 
       {/* ── SUBMITTED REPORTS TAB ───────────────────────────── */}
@@ -607,7 +554,7 @@ export default function ReportsPage() {
                   Current week
                 </button>
               )}
-              <WeekCalendar selectedMonday={weekMon} onSelectWeek={setWeekMon} />
+              <WeekCalendar selectedMonday={weekMon} onSelectWeek={setWeekMon} compact />
               {isAdmin && (
                 <div className="flex gap-3 text-xs text-ink4 ml-auto">
                   {onTimeCount > 0  && <span className="text-success font-semibold">{onTimeCount} on time</span>}
@@ -864,84 +811,36 @@ export default function ReportsPage() {
         )
       })()}
 
-      {/* ── DAILY HISTORY TAB ────────────────────────────────── */}
-      {tab === 'daily' && (() => {
-        const reportedDates = new Set(dailyHistory.map(r => r.report_date))
-        const r = selectedDailyReport
-        const isToday = selectedDailyDate === todayPT()
-        const dateLabel = (iso: string, opts: Intl.DateTimeFormatOptions) =>
-          new Date(`${iso}T12:00:00Z`).toLocaleDateString('en-US', { timeZone: 'America/Los_Angeles', ...opts })
-
-        return (
-          <div className="space-y-4">
-            <div className="flex flex-wrap items-center gap-2">
-              <DayCalendar selectedDate={selectedDailyDate} onSelectDate={setSelectedDailyDate} markedDates={reportedDates} />
-              {!isToday && (
-                <button onClick={() => setSelectedDailyDate(todayPT())} className="text-xs text-accent hover:underline">
-                  Jump to today
-                </button>
-              )}
-            </div>
-
-            {selectedDailyLoading || (dailyLoading && !r) ? (
-              <div className="text-ink4 text-sm animate-pulse">Loading report…</div>
-            ) : !r ? (
-              <div className="card p-6 text-center text-ink4 text-sm">
-                No daily report for {dateLabel(selectedDailyDate, { weekday: 'long', month: 'short', day: 'numeric' })}.
-                {isAdmin && isToday && ' Click "Generate Now" to create it.'}
-              </div>
-            ) : (
-              <>
-                <div className="card divide-y divide-sand3">
-                  <div className="flex items-center justify-between px-4 py-3">
-                    <span className="font-bold text-sm">{dateLabel(r.report_date, { weekday: 'long', month: 'long', day: 'numeric' })}</span>
-                    <div className="flex gap-4 text-xs text-ink3">
-                      <span>✅ {r.reports_filed?.length ?? 0} filed</span>
-                      {(r.reports_missing?.length ?? 0) > 0 && <span className="text-red-600">❌ {r.reports_missing.length} missing</span>}
-                      <span>{r.overdue_count} overdue</span>
-                      <span>{r.urgent_count} urgent</span>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="slbl">All Team Members</div>
-                <div className="card divide-y divide-sand3">
-                  {team.map(member => {
-                    const filed = r.reports_filed?.includes(member.name)
-                    const missing = r.reports_missing?.includes(member.name)
-                    const hrs = hoursForMember(r, member)
-                    const status: 'exempt' | 'filed' | 'missing' | 'unknown' =
-                      !member.filesReport ? 'exempt' : filed ? 'filed' : missing ? 'missing' : 'unknown'
-                    return (
-                      <div key={member.name} className="flex items-center gap-3 px-4 py-3">
-                        <div className="w-7 h-7 flex items-center justify-center text-xs font-bold flex-shrink-0 bg-sand2 text-ink">
-                          {member.name[0]}
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <span className="text-sm font-semibold">{member.name}</span>
-                          {member.role && <span className="text-xs text-ink4 ml-2">{member.role}</span>}
-                        </div>
-                        {hrs != null && <span className="text-xs font-mono text-ink3">{hrs}h</span>}
-                        <span className={`text-[10px] font-bold ${
-                          status === 'filed' ? 'text-green-700'
-                          : status === 'missing' ? 'text-red-600'
-                          : 'text-ink4'
-                        }`}>
-                          {status === 'filed' ? '● Filed' : status === 'missing' ? '✕ Missing' : status === 'exempt' ? 'Exempt' : '— No data'}
-                        </span>
-                      </div>
-                    )
-                  })}
-                </div>
-              </>
-            )}
-          </div>
-        )
-      })()}
-
       {/* ── TEAM HOURS TAB ───────────────────────────────────── */}
-      {tab === 'hours' && (
+      {tab === 'hours' && (() => {
+        const isCurrentHoursWeek = hoursWeekMon.getTime() === getMostRecentMonday(new Date()).getTime()
+        return (
         <div className="space-y-4">
+          {/* Week navigation */}
+          <div className="flex flex-wrap items-center gap-x-1 gap-y-2">
+            <button
+              onClick={() => setHoursWeekMon(d => shiftWeeks(d, -1))}
+              className="text-ink4 hover:text-ink text-xl w-8 h-8 flex items-center justify-center rounded hover:bg-sand3 transition-colors"
+              title="Previous week"
+            >‹</button>
+            <span className="text-sm font-semibold tabular-nums">{fmtWeekLabel(hoursWeekMon)}</span>
+            <button
+              onClick={() => setHoursWeekMon(d => shiftWeeks(d, 1))}
+              disabled={isCurrentHoursWeek}
+              className="text-ink4 hover:text-ink text-xl w-8 h-8 flex items-center justify-center rounded hover:bg-sand3 transition-colors disabled:opacity-30"
+              title="Next week"
+            >›</button>
+            {!isCurrentHoursWeek && (
+              <button
+                onClick={() => setHoursWeekMon(getMostRecentMonday(new Date()))}
+                className="text-xs text-accent hover:underline"
+              >
+                Current week
+              </button>
+            )}
+            <WeekCalendar selectedMonday={hoursWeekMon} onSelectWeek={setHoursWeekMon} compact />
+          </div>
+
           {webworkLoading ? (
             <div className="text-ink4 text-sm animate-pulse">Loading WebWork hours…</div>
           ) : !webworkData || !webworkData.members ? (
@@ -950,9 +849,14 @@ export default function ReportsPage() {
             </div>
           ) : (
             <>
+              {webworkData.incomplete && (
+                <div className="flex items-center gap-3 text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded px-3 py-2">
+                  <span className="flex-1">⚠ Some hours could not be fetched from WebWork after retrying — numbers below may be undercounted.</span>
+                  <button onClick={() => retryWebwork(hoursWeekMon)} className="font-semibold hover:underline flex-shrink-0">Retry</button>
+                </div>
+              )}
               <div className="text-xs text-ink3">
-                Week of {webworkData.week?.[0]} – {webworkData.week?.[webworkData.week.length - 1]}
-                <span className="ml-3 font-semibold text-ink">
+                <span className="font-semibold text-ink">
                   {Math.round(webworkData.members.reduce((s, m) => s + m.totalHours, 0) * 10) / 10}h total
                 </span>
               </div>
@@ -960,7 +864,6 @@ export default function ReportsPage() {
               {/* Trend cards */}
               <TrendCards
                 members={webworkData.members}
-                weekLabel={webworkData.week?.[0] ?? ''}
                 lastWeekLabel={webworkData.lastWeek?.[0] ?? 'prior week'}
               />
 
@@ -983,7 +886,10 @@ export default function ReportsPage() {
                     >
                       {m.username[0].toUpperCase()}
                     </div>
-                    <span className="text-sm font-semibold capitalize flex-1">{m.username}</span>
+                    <span className="text-sm font-semibold capitalize flex-1">
+                      {m.username}
+                      {m.incomplete && <span className="text-amber-600 ml-1" title="Some days failed to fetch — may be undercounted">⚠</span>}
+                    </span>
                     <div className="flex items-center gap-2 sm:gap-3">
                       <div className="w-20 sm:w-28 h-2 bg-sand3 rounded-full overflow-hidden">
                         <div
@@ -1002,7 +908,8 @@ export default function ReportsPage() {
             </>
           )}
         </div>
-      )}
+        )
+      })()}
 
       {/* ── WEEKLY ROLL-UP TAB ───────────────────────────────── */}
       {tab === 'weekly' && <>

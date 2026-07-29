@@ -7,7 +7,7 @@ interface CUTask {
   name: string
   due_date?: string
   url?: string
-  status?: { status?: string; type?: string }
+  status?: { status?: string; type?: string; color?: string }
   priority?: { id?: string; priority?: string }
   list?: { id: string; name: string }
   folder?: { id?: string; name?: string }
@@ -25,6 +25,9 @@ function taskDetail(t: CUTask) {
     id: t.id,
     name: t.name,
     list: t.list?.name ?? t.folder?.name ?? 'Unknown list',
+    listId: t.list?.id ?? '',
+    status: t.status?.status ?? '',
+    statusColor: t.status?.color ?? '',
     dueDate: t.due_date ? new Date(parseInt(t.due_date)).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : '',
     dueTs: t.due_date ? parseInt(t.due_date) : null,
     priority: t.priority?.priority ?? '',
@@ -165,5 +168,25 @@ export async function createTask(listId: string, data: Record<string, unknown>) 
     body: JSON.stringify(data),
   })
   if (!res.ok) throw new Error(`ClickUp createTask ${res.status}`)
+  return res.json()
+}
+
+// Statuses are custom per-list in ClickUp, so the valid options for a task
+// depend on which list it lives in.
+export async function getListStatuses(listId: string) {
+  const res = await fetch(`${BASE}/list/${listId}`, { headers: headers(), next: { revalidate: 0 } })
+  if (!res.ok) throw new Error(`ClickUp list ${res.status}`)
+  const data = await res.json()
+  const statuses: Array<{ status: string; color?: string; type?: string }> = data.statuses ?? []
+  return statuses.map((s) => ({ status: s.status, color: s.color ?? '', type: s.type ?? '' }))
+}
+
+export async function updateTaskStatus(taskId: string, status: string) {
+  const res = await fetch(`${BASE}/task/${taskId}`, {
+    method: 'PUT',
+    headers: headers(),
+    body: JSON.stringify({ status }),
+  })
+  if (!res.ok) throw new Error(`ClickUp updateTask ${res.status}`)
   return res.json()
 }

@@ -8,6 +8,7 @@ const TABS = [
   { label: 'Dashboard', href: '/' },
   { label: 'VCoS-AI', href: '/chatbot' },
   { label: 'Reports', href: '/reports' },
+  { label: 'Projects', href: '/projects' },
   { label: 'Weekly Report', href: '/submit' },
   { label: 'Team Meeting Prep', href: '/meeting-prep' },
   { label: 'Compliance', href: '/compliance' },

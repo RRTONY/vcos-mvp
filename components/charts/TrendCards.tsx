@@ -4,7 +4,6 @@ import type { WebWorkMember } from '@/lib/types'
 
 interface Props {
   members: WebWorkMember[]
-  weekLabel: string
   lastWeekLabel: string
 }
 
@@ -61,14 +60,13 @@ function TrendCard({ member, index }: { member: WebWorkMember; index: number }) 
   )
 }
 
-export default function TrendCards({ members, weekLabel, lastWeekLabel }: Props) {
+export default function TrendCards({ members, lastWeekLabel }: Props) {
   const sorted = [...members].sort((a, b) => b.totalHours - a.totalHours)
 
   return (
     <div>
-      <div className="flex items-center justify-between mb-3">
-        <span className="text-xs text-ink4">Week of {weekLabel}</span>
-        <span className="text-xs text-ink4">Prev: {lastWeekLabel}</span>
+      <div className="flex items-center justify-end mb-3">
+        <span className="text-xs text-ink4">vs week of {lastWeekLabel}</span>
       </div>
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         {sorted.map((m, i) => (
