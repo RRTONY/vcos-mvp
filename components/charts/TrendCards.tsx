@@ -1,25 +1,42 @@
-'use client'
+"use client";
 
-import type { WebWorkMember } from '@/lib/types'
+import type { WebWorkMember } from "@/lib/types";
 
 interface Props {
-  members: WebWorkMember[]
-  lastWeekLabel: string
+  members: WebWorkMember[];
+  lastWeekLabel: string;
 }
 
 function avatar(username: string, index: number) {
-  const colors = ['#4F46E5', '#7C3AED', '#0891B2', '#059669', '#D97706', '#DC2626', '#6B7280']
-  return { letter: username[0].toUpperCase(), bg: colors[index % colors.length] }
+  const colors = [
+    "#4F46E5",
+    "#7C3AED",
+    "#0891B2",
+    "#059669",
+    "#D97706",
+    "#DC2626",
+    "#6B7280",
+  ];
+  return {
+    letter: username[0].toUpperCase(),
+    bg: colors[index % colors.length],
+  };
 }
 
-function TrendCard({ member, index }: { member: WebWorkMember; index: number }) {
-  const { letter, bg } = avatar(member.username, index)
-  const thisWeek = member.totalHours
-  const lastWeek = member.lastWeekHours ?? 0
-  const diff = thisWeek - lastWeek
-  const pct = lastWeek > 0 ? Math.round((diff / lastWeek) * 100) : null
-  const up = diff > 0
-  const same = diff === 0
+function TrendCard({
+  member,
+  index,
+}: {
+  member: WebWorkMember;
+  index: number;
+}) {
+  const { letter, bg } = avatar(member.username, index);
+  const thisWeek = member.totalHours;
+  const lastWeek = member.lastWeekHours ?? 0;
+  const diff = thisWeek - lastWeek;
+  const pct = lastWeek > 0 ? Math.round((diff / lastWeek) * 100) : null;
+  const up = diff > 0;
+  const same = diff === 0;
 
   return (
     <div className="card px-4 py-4 flex items-center gap-3">
@@ -33,11 +50,17 @@ function TrendCard({ member, index }: { member: WebWorkMember; index: number }) 
 
       {/* Name + hours */}
       <div className="flex-1 min-w-0">
-        <div className="text-sm font-semibold capitalize truncate">{member.username}</div>
+        <div className="text-sm font-semibold capitalize truncate">
+          {member.username}
+        </div>
         <div className="flex items-baseline gap-1.5 mt-0.5 flex-wrap">
-          <span className="text-lg font-bold tabular-nums text-ink">{thisWeek}h</span>
+          <span className="text-lg font-bold tabular-nums text-ink">
+            {thisWeek}h
+          </span>
           {lastWeek > 0 && (
-            <span className="text-xs text-ink4 tabular-nums">vs {lastWeek}h</span>
+            <span className="text-xs text-ink4 tabular-nums">
+              vs {lastWeek}h
+            </span>
           )}
         </div>
       </div>
@@ -45,11 +68,13 @@ function TrendCard({ member, index }: { member: WebWorkMember; index: number }) 
       {/* Trend badge */}
       <div className="flex-shrink-0 text-right">
         {pct !== null ? (
-          <div className={`flex items-center gap-1 text-sm font-semibold tabular-nums ${
-            same ? 'text-ink4' : up ? 'text-success' : 'text-danger'
-          }`}>
-            <span>{same ? '—' : up ? '▲' : '▼'}</span>
-            <span>{same ? '0%' : `${Math.abs(pct)}%`}</span>
+          <div
+            className={`flex items-center gap-1 text-sm font-semibold tabular-nums ${
+              same ? "text-ink4" : up ? "text-success" : "text-danger"
+            }`}
+          >
+            <span>{same ? "-" : up ? "▲" : "▼"}</span>
+            <span>{same ? "0%" : `${Math.abs(pct)}%`}</span>
           </div>
         ) : (
           <span className="text-xs text-ink4">no prior data</span>
@@ -57,11 +82,11 @@ function TrendCard({ member, index }: { member: WebWorkMember; index: number }) 
         <div className="text-[10px] text-ink4 mt-0.5">vs last week</div>
       </div>
     </div>
-  )
+  );
 }
 
 export default function TrendCards({ members, lastWeekLabel }: Props) {
-  const sorted = [...members].sort((a, b) => b.totalHours - a.totalHours)
+  const sorted = [...members].sort((a, b) => b.totalHours - a.totalHours);
 
   return (
     <div>
@@ -74,5 +99,5 @@ export default function TrendCards({ members, lastWeekLabel }: Props) {
         ))}
       </div>
     </div>
-  )
+  );
 }

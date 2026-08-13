@@ -1,52 +1,69 @@
-'use client'
+"use client";
 
-import { useEffect, useState } from 'react'
+import { useEffect, useState } from "react";
 
 interface Request {
-  id: string
-  name: string
-  email: string | null
-  username_requested: string | null
-  role_requested: string | null
-  message: string | null
-  status: string
-  created_at: string
+  id: string;
+  name: string;
+  email: string | null;
+  username_requested: string | null;
+  role_requested: string | null;
+  message: string | null;
+  status: string;
+  created_at: string;
 }
 
 export default function RequestsPage() {
-  const [requests, setRequests] = useState<Request[]>([])
-  const [loading, setLoading] = useState(true)
-  const [msg, setMsg] = useState('')
+  const [requests, setRequests] = useState<Request[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [msg, setMsg] = useState("");
 
   async function load() {
-    setLoading(true)
-    const res = await fetch('/api/settings/requests')
-    if (res.ok) setRequests(await res.json())
-    setLoading(false)
+    setLoading(true);
+    const res = await fetch("/api/settings/requests");
+    if (res.ok) setRequests(await res.json());
+    setLoading(false);
   }
 
-  useEffect(() => { load() }, [])
+  useEffect(() => {
+    load();
+  }, []);
 
   async function approve(req: Request) {
-    if (!confirm(`Approve access for ${req.name} (${req.username_requested ?? 'auto-username'})?`)) return
-    const res = await fetch(`/api/settings/requests/${req.id}/approve`, { method: 'POST' })
-    const d = await res.json()
-    if (res.ok) setMsg(`✅ Approved ${req.name} · username: ${d.username} · temp PW: ${d.tempPassword}`)
-    else setMsg(`❌ Error: ${d.error ?? 'Approve failed'}`)
-    load()
+    if (
+      !confirm(
+        `Approve access for ${req.name} (${req.username_requested ?? "auto-username"})?`,
+      )
+    )
+      return;
+    const res = await fetch(`/api/settings/requests/${req.id}/approve`, {
+      method: "POST",
+    });
+    const d = await res.json();
+    if (res.ok)
+      setMsg(
+        `✅ Approved ${req.name} · username: ${d.username} · temp PW: ${d.tempPassword}`,
+      );
+    else setMsg(`❌ Error: ${d.error ?? "Approve failed"}`);
+    load();
   }
 
   async function reject(req: Request) {
-    if (!confirm(`Reject access request from ${req.name}?`)) return
-    const res = await fetch(`/api/settings/requests/${req.id}/reject`, { method: 'POST' })
-    if (!res.ok) { const d = await res.json(); setMsg(`❌ Error: ${d.error ?? 'Reject failed'}`) }
-    load()
+    if (!confirm(`Reject access request from ${req.name}?`)) return;
+    const res = await fetch(`/api/settings/requests/${req.id}/reject`, {
+      method: "POST",
+    });
+    if (!res.ok) {
+      const d = await res.json();
+      setMsg(`❌ Error: ${d.error ?? "Reject failed"}`);
+    }
+    load();
   }
 
-  const pending = requests.filter(r => r.status === 'pending')
-  const past = requests.filter(r => r.status !== 'pending')
+  const pending = requests.filter((r) => r.status === "pending");
+  const past = requests.filter((r) => r.status !== "pending");
 
-  if (loading) return <div className="text-ink4 text-sm pt-8">Loading…</div>
+  if (loading) return <div className="text-ink4 text-sm pt-8">Loading…</div>;
 
   return (
     <div className="pt-6 space-y-4">
@@ -59,38 +76,61 @@ export default function RequestsPage() {
           Pending ({pending.length})
         </div>
         <div className="card divide-y divide-border">
-          {pending.map(r => (
+          {pending.map((r) => (
             <div key={r.id} className="px-4 py-3 space-y-1">
               <div className="flex items-start justify-between gap-3">
                 <div>
                   <span className="font-semibold text-sm">{r.name}</span>
-                  {r.email && <span className="text-ink3 text-xs ml-2">{r.email}</span>}
+                  {r.email && (
+                    <span className="text-ink3 text-xs ml-2">{r.email}</span>
+                  )}
                   <div className="text-xs text-ink4 mt-0.5">
-                    Requested: {r.username_requested || '—'} · {r.role_requested || 'user'}
+                    Requested: {r.username_requested || "-"} ·{" "}
+                    {r.role_requested || "user"}
                   </div>
-                  {r.message && <div className="text-xs text-ink3 mt-1 italic">"{r.message}"</div>}
+                  {r.message && (
+                    <div className="text-xs text-ink3 mt-1 italic">
+                      "{r.message}"
+                    </div>
+                  )}
                 </div>
                 <div className="flex gap-2 shrink-0">
-                  <button onClick={() => approve(r)} className="btn-primary text-xs py-1 px-3">Approve</button>
-                  <button onClick={() => reject(r)} className="btn-secondary text-xs py-1 px-3">Reject</button>
+                  <button
+                    onClick={() => approve(r)}
+                    className="btn-primary text-xs py-1 px-3"
+                  >
+                    Approve
+                  </button>
+                  <button
+                    onClick={() => reject(r)}
+                    className="btn-secondary text-xs py-1 px-3"
+                  >
+                    Reject
+                  </button>
                 </div>
               </div>
             </div>
           ))}
           {pending.length === 0 && (
-            <div className="px-4 py-6 text-center text-ink4 text-sm">No pending requests</div>
+            <div className="px-4 py-6 text-center text-ink4 text-sm">
+              No pending requests
+            </div>
           )}
         </div>
       </div>
 
       {past.length > 0 && (
         <div>
-          <div className="text-xs font-bold uppercase tracking-widest text-ink3 mb-2">History</div>
+          <div className="text-xs font-bold uppercase tracking-widest text-ink3 mb-2">
+            History
+          </div>
           <div className="card divide-y divide-border">
-            {past.map(r => (
+            {past.map((r) => (
               <div key={r.id} className="flex items-center gap-3 px-4 py-2">
                 <span className="text-sm flex-1">{r.name}</span>
-                <span className={`text-xs px-2 py-0.5 rounded ${r.status === 'approved' ? 'bg-green-50 text-green-600' : 'bg-red-50 text-red-500'}`}>
+                <span
+                  className={`text-xs px-2 py-0.5 rounded ${r.status === "approved" ? "bg-green-50 text-green-600" : "bg-red-50 text-red-500"}`}
+                >
                   {r.status}
                 </span>
               </div>
@@ -99,5 +139,5 @@ export default function RequestsPage() {
         </div>
       )}
     </div>
-  )
+  );
 }

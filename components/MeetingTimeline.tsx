@@ -1,26 +1,37 @@
-'use client'
+"use client";
 
-import { useState } from 'react'
-import type { Meeting } from '@/lib/types'
-import FormattedNotes from '@/components/FormattedNotes'
+import { useState } from "react";
+import type { Meeting } from "@/lib/types";
+import FormattedNotes from "@/components/FormattedNotes";
 
-const AVATAR_COLORS = ['#4F46E5','#7C3AED','#0891B2','#059669','#D97706','#DC2626']
+const AVATAR_COLORS = [
+  "#4F46E5",
+  "#7C3AED",
+  "#0891B2",
+  "#059669",
+  "#D97706",
+  "#DC2626",
+];
 
 function emailInitials(email: string) {
-  const local = email.split('@')[0]
-  const parts = local.split(/[._-]/)
-  return parts.map(p => p[0]).join('').slice(0, 2).toUpperCase()
+  const local = email.split("@")[0];
+  const parts = local.split(/[._-]/);
+  return parts
+    .map((p) => p[0])
+    .join("")
+    .slice(0, 2)
+    .toUpperCase();
 }
 
 function avatarColor(s: string) {
-  let h = 0
-  for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) % AVATAR_COLORS.length
-  return AVATAR_COLORS[h]
+  let h = 0;
+  for (let i = 0; i < s.length; i++)
+    h = (h * 31 + s.charCodeAt(i)) % AVATAR_COLORS.length;
+  return AVATAR_COLORS[h];
 }
 
-
 function MeetingItem({ m, isLast }: { m: Meeting; isLast: boolean }) {
-  const [open, setOpen] = useState(false)
+  const [open, setOpen] = useState(false);
 
   return (
     <div className="flex gap-4">
@@ -31,9 +42,9 @@ function MeetingItem({ m, isLast }: { m: Meeting; isLast: boolean }) {
       </div>
 
       {/* Content */}
-      <div className={`pb-6 flex-1 min-w-0 ${isLast ? '' : ''}`}>
+      <div className={`pb-6 flex-1 min-w-0 ${isLast ? "" : ""}`}>
         <button
-          onClick={() => setOpen(v => !v)}
+          onClick={() => setOpen((v) => !v)}
           className="w-full text-left group"
         >
           <div className="flex items-start justify-between gap-2">
@@ -42,23 +53,31 @@ function MeetingItem({ m, isLast }: { m: Meeting; isLast: boolean }) {
                 {m.title}
               </div>
               <div className="text-xs text-ink4 mt-0.5">
-                {m.date}{m.duration ? ` · ${m.duration}` : ''}
+                {m.date}
+                {m.duration ? ` · ${m.duration}` : ""}
               </div>
             </div>
-            <span className="text-ink4 text-xs flex-shrink-0 mt-0.5">{open ? '▲' : '▼'}</span>
+            <span className="text-ink4 text-xs flex-shrink-0 mt-0.5">
+              {open ? "▲" : "▼"}
+            </span>
           </div>
 
-          {/* Participants — named badges for team members, avatars for unmatched */}
+          {/* Participants - named badges for team members, avatars for unmatched */}
           {m.participants.length > 0 && (
             <div className="flex items-center gap-1.5 mt-2 flex-wrap">
-              {(m.teamParticipants ?? []).map(name => (
-                <span key={name} className="text-[10px] font-bold bg-accent-light text-accent px-1.5 py-0.5">
-                  {name.split(' ')[0]}
+              {(m.teamParticipants ?? []).map((name) => (
+                <span
+                  key={name}
+                  className="text-[10px] font-bold bg-accent-light text-accent px-1.5 py-0.5"
+                >
+                  {name.split(" ")[0]}
                 </span>
               ))}
               {(() => {
-                const matched = new Set(m.matchedEmails ?? [])
-                const unmatched = m.participants.filter(p => !matched.has(p.toLowerCase()))
+                const matched = new Set(m.matchedEmails ?? []);
+                const unmatched = m.participants.filter(
+                  (p) => !matched.has(p.toLowerCase()),
+                );
                 return (
                   <>
                     {unmatched.slice(0, 5).map((p, i) => (
@@ -72,10 +91,12 @@ function MeetingItem({ m, isLast }: { m: Meeting; isLast: boolean }) {
                       </div>
                     ))}
                     {unmatched.length > 5 && (
-                      <span className="text-[10px] text-ink4">+{unmatched.length - 5}</span>
+                      <span className="text-[10px] text-ink4">
+                        +{unmatched.length - 5}
+                      </span>
                     )}
                   </>
-                )
+                );
               })()}
             </div>
           )}
@@ -86,20 +107,35 @@ function MeetingItem({ m, isLast }: { m: Meeting; isLast: boolean }) {
           <div className="mt-3 space-y-3 border-l-2 border-sand4 pl-3">
             {m.overview && (
               <div>
-                <div className="text-[10px] font-bold uppercase tracking-widest text-ink4 mb-1">Overview</div>
-                <FormattedNotes text={m.overview} className="text-sm text-ink2 leading-relaxed" />
+                <div className="text-[10px] font-bold uppercase tracking-widest text-ink4 mb-1">
+                  Overview
+                </div>
+                <FormattedNotes
+                  text={m.overview}
+                  className="text-sm text-ink2 leading-relaxed"
+                />
               </div>
             )}
             {m.actionItems && (
               <div>
-                <div className="text-[10px] font-bold uppercase tracking-widest text-ink4 mb-1">Action Items</div>
-                <FormattedNotes text={m.actionItems} className="text-sm text-ink2 leading-relaxed" />
+                <div className="text-[10px] font-bold uppercase tracking-widest text-ink4 mb-1">
+                  Action Items
+                </div>
+                <FormattedNotes
+                  text={m.actionItems}
+                  className="text-sm text-ink2 leading-relaxed"
+                />
               </div>
             )}
             {m.keywords.length > 0 && (
               <div className="flex flex-wrap gap-1">
                 {m.keywords.slice(0, 8).map((k) => (
-                  <span key={k} className="text-[10px] bg-sand3 text-ink3 px-1.5 py-0.5 rounded">{k}</span>
+                  <span
+                    key={k}
+                    className="text-[10px] bg-sand3 text-ink3 px-1.5 py-0.5 rounded"
+                  >
+                    {k}
+                  </span>
                 ))}
               </div>
             )}
@@ -115,16 +151,24 @@ function MeetingItem({ m, isLast }: { m: Meeting; isLast: boolean }) {
         )}
       </div>
     </div>
-  )
+  );
 }
 
 export default function MeetingTimeline({ meetings }: { meetings: Meeting[] }) {
-  if (!meetings.length) return (
-    <div className="card p-6 text-center text-ink4 text-sm">
-      No recent meetings in Fireflies.{' '}
-      <a href="https://app.fireflies.ai" target="_blank" rel="noopener noreferrer" className="text-accent hover:underline">Open Fireflies ↗</a>
-    </div>
-  )
+  if (!meetings.length)
+    return (
+      <div className="card p-6 text-center text-ink4 text-sm">
+        No recent meetings in Fireflies.{" "}
+        <a
+          href="https://app.fireflies.ai"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="text-accent hover:underline"
+        >
+          Open Fireflies ↗
+        </a>
+      </div>
+    );
 
   return (
     <div className="card px-5 pt-5 pb-1">
@@ -140,5 +184,5 @@ export default function MeetingTimeline({ meetings }: { meetings: Meeting[] }) {
         All meetings in Fireflies ↗
       </a>
     </div>
-  )
+  );
 }

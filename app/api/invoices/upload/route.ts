@@ -1,38 +1,45 @@
 // POST /api/invoices/upload
-// Any logged-in user — parses Braintrust PDF, stores to Supabase, auto-pushes to ClickUp
-import { NextRequest, NextResponse } from 'next/server'
-import { parseBraintrustPdf } from '@/lib/pdf-parser'
-import { COOKIE_NAME, verifySession } from '@/lib/auth'
-import { getSupabase } from '@/lib/supabase'
-import { getTeamMembers } from '@/lib/team-db'
+// Any logged-in user - parses Braintrust PDF, stores to Supabase, auto-pushes to ClickUp
+import { NextRequest, NextResponse } from "next/server";
+import { parseBraintrustPdf } from "@/lib/pdf-parser";
+import { COOKIE_NAME, verifySession } from "@/lib/auth";
+import { getSupabase } from "@/lib/supabase";
+import { getTeamMembers } from "@/lib/team-db";
 
 // Match contractor name from PDF (e.g. "Daniel Baez") to a VCOS username via team_members table
 async function detectForUser(contractor: string): Promise<string | null> {
-  const members = await getTeamMembers()
-  const c = contractor.toLowerCase()
-  const match = members.find(m => {
+  const members = await getTeamMembers();
+  const c = contractor.toLowerCase();
+  const match = members.find((m) => {
     // Match braintrust_name field first, then fall back to full_name prefix
-    const bt = (m.braintrust_name ?? '').toLowerCase()
-    const fn = m.full_name.toLowerCase()
-    return (bt && (c === bt || c.includes(bt) || bt.includes(c))) ||
-           c === fn || fn.startsWith(c.split(' ')[0]) || c.startsWith(fn.split(' ')[0])
-  })
-  return match?.vcos_username ?? null
+    const bt = (m.braintrust_name ?? "").toLowerCase();
+    const fn = m.full_name.toLowerCase();
+    return (
+      (bt && (c === bt || c.includes(bt) || bt.includes(c))) ||
+      c === fn ||
+      fn.startsWith(c.split(" ")[0]) ||
+      c.startsWith(fn.split(" ")[0])
+    );
+  });
+  return match?.vcos_username ?? null;
 }
-import { CLICKUP_INVOICE_LIST_ID } from '@/lib/constants'
-const LIST_ID = process.env.CLICKUP_INVOICE_LIST_ID ?? CLICKUP_INVOICE_LIST_ID
+import { CLICKUP_INVOICE_LIST_ID } from "@/lib/constants";
+const LIST_ID = process.env.CLICKUP_INVOICE_LIST_ID ?? CLICKUP_INVOICE_LIST_ID;
 
-async function pushToClickUp(inv: {
-  id: string
-  contractor: string
-  invoice_number: string
-  period: string
-  hours: number
-  rate: number
-  amount: number
-  status: string
-  parsed_at: string
-}, apiKey: string): Promise<{ taskId: string; url: string } | { error: string }> {
+async function pushToClickUp(
+  inv: {
+    id: string;
+    contractor: string;
+    invoice_number: string;
+    period: string;
+    hours: number;
+    rate: number;
+    amount: number;
+    status: string;
+    parsed_at: string;
+  },
+  apiKey: string,
+): Promise<{ taskId: string; url: string } | { error: string }> {
   const description = [
     `Contractor: ${inv.contractor}`,
     `Invoice: ${inv.invoice_number}`,
@@ -43,122 +50,170 @@ async function pushToClickUp(inv: {
     `Status: ${inv.status}`,
     `Parsed: ${inv.parsed_at}`,
     `Source: Braintrust PDF Upload`,
-  ].join('\n')
+  ].join("\n");
 
   try {
-    const res = await fetch(`https://api.clickup.com/api/v2/list/${LIST_ID}/task`, {
-      method: 'POST',
-      headers: { Authorization: apiKey, 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        name: `[Invoice] ${inv.contractor} — ${inv.period || inv.invoice_number}`,
-        description,
-        tags: ['braintrust-invoice'],
-        status: inv.status === 'paid' ? 'paid' : 'pending',
-      }),
-    })
-    if (!res.ok) return { error: `ClickUp responded with ${res.status} ${res.statusText}` }
-    const task = await res.json()
-    if (!task.id) return { error: 'ClickUp returned no task ID — check API key permissions' }
-    return { taskId: task.id, url: task.url ?? `https://app.clickup.com/t/${task.id}` }
+    const res = await fetch(
+      `https://api.clickup.com/api/v2/list/${LIST_ID}/task`,
+      {
+        method: "POST",
+        headers: { Authorization: apiKey, "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: `[Invoice] ${inv.contractor} - ${inv.period || inv.invoice_number}`,
+          description,
+          tags: ["braintrust-invoice"],
+          status: inv.status === "paid" ? "paid" : "pending",
+        }),
+      },
+    );
+    if (!res.ok)
+      return {
+        error: `ClickUp responded with ${res.status} ${res.statusText}`,
+      };
+    const task = await res.json();
+    if (!task.id)
+      return {
+        error: "ClickUp returned no task ID - check API key permissions",
+      };
+    return {
+      taskId: task.id,
+      url: task.url ?? `https://app.clickup.com/t/${task.id}`,
+    };
   } catch (e) {
-    return { error: `Network error reaching ClickUp: ${e instanceof Error ? e.message : String(e)}` }
+    return {
+      error: `Network error reaching ClickUp: ${e instanceof Error ? e.message : String(e)}`,
+    };
   }
 }
 
 export async function POST(req: NextRequest) {
-  const token = req.cookies.get(COOKIE_NAME)?.value
-  const session = token ? await verifySession(token) : null
+  const token = req.cookies.get(COOKIE_NAME)?.value;
+  const session = token ? await verifySession(token) : null;
   if (!session) {
-    return NextResponse.json({ error: 'Login required' }, { status: 401 })
+    return NextResponse.json({ error: "Login required" }, { status: 401 });
   }
 
   try {
-    const formData = await req.formData()
-    const file = formData.get('pdf') as File | null
-    if (!file) return NextResponse.json({ error: 'No PDF file provided' }, { status: 400 })
-    if (!file.name.endsWith('.pdf')) return NextResponse.json({ error: 'File must be a PDF' }, { status: 400 })
+    const formData = await req.formData();
+    const file = formData.get("pdf") as File | null;
+    if (!file)
+      return NextResponse.json(
+        { error: "No PDF file provided" },
+        { status: 400 },
+      );
+    if (!file.name.endsWith(".pdf"))
+      return NextResponse.json(
+        { error: "File must be a PDF" },
+        { status: 400 },
+      );
 
-    const buffer = Buffer.from(await file.arrayBuffer())
-    const invoices = await parseBraintrustPdf(buffer)
+    const buffer = Buffer.from(await file.arrayBuffer());
+    const invoices = await parseBraintrustPdf(buffer);
 
     if (invoices.length === 0) {
-      return NextResponse.json({ error: 'No invoice records found in PDF. Make sure this is a Braintrust invoice.' }, { status: 422 })
+      return NextResponse.json(
+        {
+          error:
+            "No invoice records found in PDF. Make sure this is a Braintrust invoice.",
+        },
+        { status: 422 },
+      );
     }
 
-    const sb = getSupabase()
+    const sb = getSupabase();
 
     // Detect which user each invoice belongs to (for non-admin visibility)
-    const forUserMap: Record<string, string | null> = {}
-    await Promise.all(invoices.map(async (inv) => {
-      forUserMap[inv.contractor] = await detectForUser(inv.contractor)
-    }))
+    const forUserMap: Record<string, string | null> = {};
+    await Promise.all(
+      invoices.map(async (inv) => {
+        forUserMap[inv.contractor] = await detectForUser(inv.contractor);
+      }),
+    );
 
     const rows = invoices.map((inv) => ({
-      contractor:     inv.contractor,
+      contractor: inv.contractor,
       invoice_number: inv.invoiceNumber,
-      period:         inv.period,
-      hours:          inv.hours,
-      rate:           inv.rate,
-      amount:         inv.amount,
-      status:         inv.status,
-      parsed_at:      inv.parsedAt,
-      uploaded_by:    session.username,
-      for_user:       forUserMap[inv.contractor] ?? null,
-    }))
+      period: inv.period,
+      hours: inv.hours,
+      rate: inv.rate,
+      amount: inv.amount,
+      status: inv.status,
+      parsed_at: inv.parsedAt,
+      uploaded_by: session.username,
+      for_user: forUserMap[inv.contractor] ?? null,
+    }));
 
-    const { data: inserted, error: dbError } = await sb.from('invoices').insert(rows).select()
-    if (dbError) throw new Error(`Failed to save invoice: ${dbError.message}`)
+    const { data: inserted, error: dbError } = await sb
+      .from("invoices")
+      .insert(rows)
+      .select();
+    if (dbError) throw new Error(`Failed to save invoice: ${dbError.message}`);
 
     // Auto-push each saved invoice to ClickUp
-    const apiKey = process.env.CLICKUP_API_KEY
-    const clickupWarnings: string[] = []
+    const apiKey = process.env.CLICKUP_API_KEY;
+    const clickupWarnings: string[] = [];
 
     if (apiKey && inserted) {
-      await Promise.all(inserted.map(async (row) => {
-        const result = await pushToClickUp(row, apiKey)
-        if ('error' in result) {
-          clickupWarnings.push(`Invoice ${row.invoice_number}: ${result.error}`)
-        } else {
-          await sb.from('invoices').update({
-            clickup_task_id: result.taskId,
-            clickup_url: result.url,
-          }).eq('id', row.id)
-        }
-      }))
+      await Promise.all(
+        inserted.map(async (row) => {
+          const result = await pushToClickUp(row, apiKey);
+          if ("error" in result) {
+            clickupWarnings.push(
+              `Invoice ${row.invoice_number}: ${result.error}`,
+            );
+          } else {
+            await sb
+              .from("invoices")
+              .update({
+                clickup_task_id: result.taskId,
+                clickup_url: result.url,
+              })
+              .eq("id", row.id);
+          }
+        }),
+      );
     } else if (!apiKey) {
-      clickupWarnings.push('CLICKUP_API_KEY is not configured — invoice saved but not sent to ClickUp')
+      clickupWarnings.push(
+        "CLICKUP_API_KEY is not configured - invoice saved but not sent to ClickUp",
+      );
     }
 
     // Re-read inserted rows (now with clickup fields populated) to return to client
     const { data: finalRows } = await sb
-      .from('invoices')
-      .select('*')
-      .in('id', (inserted ?? []).map((r) => r.id))
-      .order('created_at', { ascending: false })
+      .from("invoices")
+      .select("*")
+      .in(
+        "id",
+        (inserted ?? []).map((r) => r.id),
+      )
+      .order("created_at", { ascending: false });
 
     const returnedInvoices = (finalRows ?? []).map((row) => ({
-      id:            row.id,
-      contractor:    row.contractor,
+      id: row.id,
+      contractor: row.contractor,
       invoiceNumber: row.invoice_number,
-      period:        row.period ?? '',
-      hours:         row.hours ?? 0,
-      rate:          row.rate ?? 0,
-      amount:        row.amount ?? 0,
-      status:        row.status ?? 'unknown',
-      parsedAt:      row.parsed_at ?? '',
+      period: row.period ?? "",
+      hours: row.hours ?? 0,
+      rate: row.rate ?? 0,
+      amount: row.amount ?? 0,
+      status: row.status ?? "unknown",
+      parsedAt: row.parsed_at ?? "",
       clickupTaskId: row.clickup_task_id ?? null,
-      clickupUrl:    row.clickup_url ?? null,
-      uploadedBy:    row.uploaded_by ?? null,
-      forUser:       row.for_user ?? null,
-    }))
+      clickupUrl: row.clickup_url ?? null,
+      uploadedBy: row.uploaded_by ?? null,
+      forUser: row.for_user ?? null,
+    }));
 
     return NextResponse.json({
       ok: true,
       count: returnedInvoices.length,
       invoices: returnedInvoices,
       clickupWarnings: clickupWarnings.length > 0 ? clickupWarnings : undefined,
-    })
+    });
   } catch (err) {
-    return NextResponse.json({ error: err instanceof Error ? err.message : 'Parse error' }, { status: 500 })
+    return NextResponse.json(
+      { error: err instanceof Error ? err.message : "Parse error" },
+      { status: 500 },
+    );
   }
 }

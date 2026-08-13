@@ -5,7 +5,7 @@ node_modules/
 .next/
 out/
 
-# env files — NEVER commit these
+# env files - NEVER commit these
 .env
 .env.local
 .env.*.local

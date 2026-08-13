@@ -8,9 +8,11 @@
   html {
     -webkit-font-smoothing: antialiased;
     font-size: 16px;
+    overflow-x: hidden;
   }
   body {
     @apply bg-sand2 text-ink font-sans;
+    overflow-x: hidden;
   }
   button, a, [role="button"] {
     cursor: pointer;

@@ -1,5 +1,5 @@
 # ═══════════════════════════════════════════════════════════════
-# VCOS — Visual Chief of Staff · Netlify Configuration
+# VCOS - Visual Chief of Staff · Netlify Configuration
 # Site: https://vsoc.netlify.app
 # Owner: Tony Greenberg / RampRate · ImpactSoul
 # Stack: Next.js 14 · Tailwind · @netlify/plugin-nextjs
@@ -19,7 +19,7 @@
 
 [build.environment]
   NODE_VERSION = "20"
-  # REQUIRED env vars — set in Netlify UI → Site Settings → Environment Variables:
+  # REQUIRED env vars - set in Netlify UI → Site Settings → Environment Variables:
   #
   #   AUTH_SECRET              = any long random string (signs session cookies)
   #   AUTH_USERS               = tony:vcos2026:admin,ramprate:vcos2026:admin,kim:vcos2026:user,chase:vcos2026:user,rob:vcos2026:user,alex:vcos2026:user,josh:vcos2026:user,daniel:vcos2026:user,ben:vcos2026:user
@@ -39,8 +39,8 @@
   #                              users:read, chat:write
   #   FIREFLIES_API_KEY        = d109cc2...
   #   NEXT_PUBLIC_URL          = https://vcos-ramprate.netlify.app  (no trailing slash, used by all cron functions)
-  #   ANTHROPIC_API_KEY_CHAT     = sk-ant-...  (Claude token "vcos-chat" — powers app/api/chat only)
-  #   ANTHROPIC_API_KEY_REPORTS  = sk-ant-...  (Claude token "vcos-reports" — powers weekly-reports,
+  #   ANTHROPIC_API_KEY_CHAT     = sk-ant-...  (Claude token "vcos-chat" - powers app/api/chat only)
+  #   ANTHROPIC_API_KEY_REPORTS  = sk-ant-...  (Claude token "vcos-reports" - powers weekly-reports,
   #                                             kickoff-brief, and the scheduled morning brief)
   #   SLACK_BRIEF_CHANNEL      = (optional) channel ID for the morning brief; defaults to SLACK_ADMIN_CHANNEL
 
@@ -63,7 +63,7 @@
     Referrer-Policy         = "strict-origin-when-cross-origin"
     Permissions-Policy      = "camera=(), microphone=(), geolocation=()"
 
-# ── CORS — API routes ──────────────────────────────────────────
+# ── CORS - API routes ──────────────────────────────────────────
 # Wildcard covers all current routes:
 #   /api/auth/login
 #   /api/auth/logout

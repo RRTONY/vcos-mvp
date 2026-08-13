@@ -1,185 +1,361 @@
 // Gathers a compact, current snapshot of VCOS operational state to ground the
 // chatbot's answers. Role-scoped: admins/owners see the whole team; a normal user
 // only sees their own tasks, hours, and report status.
-import { getSupabase } from './supabase'
-import { getTeamMembers, getTeamMemberByUsername, type TeamMemberRow } from './team-db'
-import { getCachedSWR } from './api-cache'
-import { isReportFrom } from './report-match'
-import { bucketFor } from './due-buckets'
-import { loadGoals, loadCommitments } from './memory'
-import type { SlackMessage } from './slack'
-import type { ClickUpData, Task, Meeting, WebWorkMember } from './types'
+import { getSupabase } from "./supabase";
+import {
+  getTeamMembers,
+  getTeamMemberByUsername,
+  type TeamMemberRow,
+} from "./team-db";
+import { getCachedSWR } from "./api-cache";
+import { isReportFrom } from "./report-match";
+import { bucketFor } from "./due-buckets";
+import { loadGoals, loadCommitments } from "./memory";
+import type { SlackMessage } from "./slack";
+import type { ClickUpData, Task, Meeting, WebWorkMember } from "./types";
+import { ANALYTICS_SITES } from "./constants";
+import type { AnalyticsSnapshot } from "./google-analytics";
 
-import { getMondayOfWeekPT, fmtWeekRange, weekLabelVariants } from './week-utils'
-const mostRecentMonday = getMondayOfWeekPT
+import {
+  getMondayOfWeekPT,
+  fmtWeekRange,
+  weekLabelVariants,
+} from "./week-utils";
+const mostRecentMonday = getMondayOfWeekPT;
+// GA4's date dimension comes back as "YYYYMMDD" - reformat to unambiguous ISO.
+function fmtYyyymmdd(s: string): string {
+  return s.length === 8 ? `${s.slice(0, 4)}-${s.slice(4, 6)}-${s.slice(6, 8)}` : s;
+}
 function fmtDate(d: Date): string {
-  return d.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })
+  return d.toLocaleDateString("en-US", {
+    weekday: "long",
+    month: "long",
+    day: "numeric",
+    year: "numeric",
+  });
 }
 function cuKeyOf(m: TeamMemberRow): string {
-  return (m.clickup_key ?? m.full_name.split(' ')[0]).toLowerCase()
+  return (m.clickup_key ?? m.full_name.split(" ")[0]).toLowerCase();
 }
 function lookup<T>(map: Record<string, T> | undefined, key: string): T | null {
-  if (!map || !key) return null
-  const k = Object.keys(map).find(x => x.includes(key))
-  return k ? map[k] : null
+  if (!map || !key) return null;
+  const k = Object.keys(map).find((x) => x.includes(key));
+  return k ? map[k] : null;
 }
 function loopLine(t: Task): string {
-  const tag = t.priority === 'urgent' ? '[URGENT] ' : t.priority === 'high' ? '[HIGH] ' : ''
-  return `    - ${tag}${t.name}${t.dueDate ? ` (due ${t.dueDate})` : ' (no due date)'} — ${t.list}`
+  const tag =
+    t.priority === "urgent"
+      ? "[URGENT] "
+      : t.priority === "high"
+        ? "[HIGH] "
+        : "";
+  return `    - ${tag}${t.name}${t.dueDate ? ` (due ${t.dueDate})` : " (no due date)"} - ${t.list}`;
 }
 
-interface ReportRow { submitted_by: string; created_at: string; win?: string | null; accomplishments?: string | null; priorities?: string | null; blockers?: string | null; support_needed?: string | null }
+interface ReportRow {
+  submitted_by: string;
+  created_at: string;
+  win?: string | null;
+  accomplishments?: string | null;
+  priorities?: string | null;
+  blockers?: string | null;
+  support_needed?: string | null;
+}
 
-export async function buildChatContext(username: string, isAdmin: boolean): Promise<string> {
-  const now = new Date()
-  const mon = mostRecentMonday(now)
-  const weekLabel = fmtWeekRange(mon)
+export async function buildChatContext(
+  username: string,
+  isAdmin: boolean,
+): Promise<string> {
+  const now = new Date();
+  const mon = mostRecentMonday(now);
+  const weekLabel = fmtWeekRange(mon);
 
-  const sb = getSupabase()
-  const [members, cu, reportsRes, me, goals, commitments, ff, ww, slackMsgs] = await Promise.all([
-    getTeamMembers().catch(() => [] as TeamMemberRow[]),
-    getCachedSWR<ClickUpData>('clickup').then(r => r.data).catch(() => null),
-    (async (): Promise<ReportRow[] | null> => {
-      try {
-        const { data } = await sb.from('weekly_reports')
-          .select('submitted_by, created_at, win, accomplishments, priorities, blockers, support_needed')
-          .in('week_label', weekLabelVariants(mon))
-          .order('created_at', { ascending: true })
-        return (data as ReportRow[] | null) ?? null
-      } catch { return null }
-    })(),
-    isAdmin ? Promise.resolve(null) : getTeamMemberByUsername(username).catch(() => null),
-    loadGoals().catch(() => ''),
-    loadCommitments().catch(() => []),
-    getCachedSWR<{ meetings: Meeting[] }>('fireflies').then(r => r.data?.meetings ?? []).catch(() => [] as Meeting[]),
-    getCachedSWR<{ members: WebWorkMember[] }>('webwork').then(r => r.data?.members ?? []).catch(() => [] as WebWorkMember[]),
-    isAdmin
-      ? getCachedSWR<{ messages: SlackMessage[] }>('slack-messages').then(r => r.data?.messages ?? []).catch(() => [] as SlackMessage[])
-      : Promise.resolve([] as SlackMessage[]),
-  ])
+  const sb = getSupabase();
+  const [members, cu, reportsRes, me, goals, commitments, ff, ww, slackMsgs] =
+    await Promise.all([
+      getTeamMembers().catch(() => [] as TeamMemberRow[]),
+      getCachedSWR<ClickUpData>("clickup")
+        .then((r) => r.data)
+        .catch(() => null),
+      (async (): Promise<ReportRow[] | null> => {
+        try {
+          const { data } = await sb
+            .from("weekly_reports")
+            .select(
+              "submitted_by, created_at, win, accomplishments, priorities, blockers, support_needed",
+            )
+            .in("week_label", weekLabelVariants(mon))
+            .order("created_at", { ascending: true });
+          return (data as ReportRow[] | null) ?? null;
+        } catch {
+          return null;
+        }
+      })(),
+      isAdmin
+        ? Promise.resolve(null)
+        : getTeamMemberByUsername(username).catch(() => null),
+      loadGoals().catch(() => ""),
+      loadCommitments().catch(() => []),
+      getCachedSWR<{ meetings: Meeting[] }>("fireflies")
+        .then((r) => r.data?.meetings ?? [])
+        .catch(() => [] as Meeting[]),
+      getCachedSWR<{ members: WebWorkMember[] }>("webwork")
+        .then((r) => r.data?.members ?? [])
+        .catch(() => [] as WebWorkMember[]),
+      isAdmin
+        ? getCachedSWR<{ messages: SlackMessage[] }>("slack-messages")
+            .then((r) => r.data?.messages ?? [])
+            .catch(() => [] as SlackMessage[])
+        : Promise.resolve([] as SlackMessage[]),
+    ]);
 
   const hoursFor = (key: string): number | null => {
-    if (!key) return null
-    const w = ww.find(x => { const u = x.username.toLowerCase(); return u.includes(key) || key.includes(u) })
-    return w?.totalHours ?? null
-  }
+    if (!key) return null;
+    const w = ww.find((x) => {
+      const u = x.username.toLowerCase();
+      return u.includes(key) || key.includes(u);
+    });
+    return w?.totalHours ?? null;
+  };
 
-  const reports = reportsRes ?? []
+  const reports = reportsRes ?? [];
   // Scope the roster: admins see everyone; a user sees only themselves.
   const scoped = isAdmin
     ? members
-    : members.filter(m => (me && m.full_name === me.full_name) || (m.vcos_username ?? '').toLowerCase() === username.toLowerCase())
+    : members.filter(
+        (m) =>
+          (me && m.full_name === me.full_name) ||
+          (m.vcos_username ?? "").toLowerCase() === username.toLowerCase(),
+      );
 
-  const meName = (me?.full_name)
-    ?? members.find(m => (m.vcos_username ?? '').toLowerCase() === username.toLowerCase())?.full_name
-    ?? username
+  const meName =
+    me?.full_name ??
+    members.find(
+      (m) => (m.vcos_username ?? "").toLowerCase() === username.toLowerCase(),
+    )?.full_name ??
+    username;
 
-  const lines: string[] = []
-  lines.push(`Today: ${fmtDate(now)}`)
-  lines.push(`Current work week: ${weekLabel} (Monday ${mon.toISOString().slice(0, 10)})`)
-  lines.push(`Current user: ${meName} (login: ${username}) — address them by their first name.`)
-  lines.push(`Viewer role: ${isAdmin ? 'admin/owner (sees the whole team)' : 'team member (sees only their own data)'}`)
-  lines.push('')
+  const lines: string[] = [];
+  lines.push(`Today: ${fmtDate(now)}`);
+  lines.push(
+    `Current work week: ${weekLabel} (Monday ${mon.toISOString().slice(0, 10)})`,
+  );
+  lines.push(
+    `Current user: ${meName} (login: ${username}) - address them by their first name.`,
+  );
+  lines.push(
+    `Viewer role: ${isAdmin ? "admin/owner (sees the whole team)" : "team member (sees only their own data)"}`,
+  );
+  lines.push("");
 
-  // ── Goals — the source of truth every recommendation filters through ──
+  // ── Goals - the source of truth every recommendation filters through ──
   if (goals && goals.trim()) {
-    lines.push('## GOALS (source of truth — rank and filter every recommendation against these)')
-    lines.push(goals.trim())
-    lines.push('')
+    lines.push(
+      "## GOALS (source of truth - rank and filter every recommendation against these)",
+    );
+    lines.push(goals.trim());
+    lines.push("");
   }
 
   // ── Open & overdue commitments / decisions ──
-  const openCommit = commitments.filter(c => c.status === 'open')
+  const openCommit = commitments.filter((c) => c.status === "open");
   if (openCommit.length) {
-    const today = now.toISOString().slice(0, 10)
-    const overdue = openCommit.filter(c => c.due && c.due < today)
-    lines.push(`## COMMITMENTS & DECISIONS LOG (${openCommit.length} open${overdue.length ? `, ${overdue.length} OVERDUE` : ''}) — proactively surface overdue items`)
+    const today = now.toISOString().slice(0, 10);
+    const overdue = openCommit.filter((c) => c.due && c.due < today);
+    lines.push(
+      `## COMMITMENTS & DECISIONS LOG (${openCommit.length} open${overdue.length ? `, ${overdue.length} OVERDUE` : ""}) - proactively surface overdue items`,
+    );
     for (const c of openCommit.slice(0, 8)) {
-      const od = c.due && c.due < today ? ' ⚠️OVERDUE' : ''
-      lines.push(`  - [${c.type}] ${c.text}${c.owner ? ` (owner: ${c.owner})` : ''}${c.due ? ` (due ${c.due})` : ''}${od}`)
+      const od = c.due && c.due < today ? " ⚠️OVERDUE" : "";
+      lines.push(
+        `  - [${c.type}] ${c.text}${c.owner ? ` (owner: ${c.owner})` : ""}${c.due ? ` (due ${c.due})` : ""}${od}`,
+      );
     }
-    lines.push('')
+    lines.push("");
   }
 
   // ── Overall ClickUp health (admins only) ──
   if (isAdmin && cu) {
-    lines.push('## ClickUp — overall')
-    lines.push(`- Open tasks: ${cu.totalTasks ?? 0}, Overdue: ${cu.overdue ?? 0} (${cu.overduePercent ?? 0}%), Urgent: ${cu.urgent ?? 0}`)
-    lines.push('')
+    lines.push("## ClickUp - overall");
+    lines.push(
+      `- Open tasks: ${cu.totalTasks ?? 0}, Overdue: ${cu.overdue ?? 0} (${cu.overduePercent ?? 0}%), Urgent: ${cu.urgent ?? 0}`,
+    );
+    lines.push("");
   }
 
   // ── Weekly report compliance (admins only) ──
   if (isAdmin) {
-    const reporting = members.filter(m => m.files_report)
-    const filed = reporting.filter(m => reports.some(r => isReportFrom(r.submitted_by, m.full_name)))
-    const missing = reporting.filter(m => !filed.includes(m))
-    lines.push(`## Weekly reports — week of ${weekLabel}`)
-    lines.push(`- Filed (${filed.length}/${reporting.length}): ${filed.map(m => m.full_name).join(', ') || 'none yet'}`)
-    lines.push(`- MISSING (${missing.length}): ${missing.map(m => m.full_name).join(', ') || 'none — everyone filed'}`)
-    lines.push('')
+    const reporting = members.filter((m) => m.files_report);
+    const filed = reporting.filter((m) =>
+      reports.some((r) => isReportFrom(r.submitted_by, m.full_name)),
+    );
+    const missing = reporting.filter((m) => !filed.includes(m));
+    lines.push(`## Weekly reports - week of ${weekLabel}`);
+    lines.push(
+      `- Filed (${filed.length}/${reporting.length}): ${filed.map((m) => m.full_name).join(", ") || "none yet"}`,
+    );
+    lines.push(
+      `- MISSING (${missing.length}): ${missing.map((m) => m.full_name).join(", ") || "none - everyone filed"}`,
+    );
+    lines.push("");
   }
 
   // ── Per-person detail ──
-  lines.push(isAdmin ? '## Team — per person' : '## Your status')
+  lines.push(isAdmin ? "## Team - per person" : "## Your status");
   for (const m of scoped) {
-    const key = cuKeyOf(m)
-    const stats = lookup(cu?.assigneeStats, key)
-    const tasks = (lookup(cu?.tasksByAssignee, key) ?? []) as Task[]
-    const overdue = tasks.filter(t => bucketFor(t.dueTs, now) === 'overdue')
-    const report = reports.find(r => isReportFrom(r.submitted_by, m.full_name)) ?? null
+    const key = cuKeyOf(m);
+    const stats = lookup(cu?.assigneeStats, key);
+    const tasks = (lookup(cu?.tasksByAssignee, key) ?? []) as Task[];
+    const overdue = tasks.filter((t) => bucketFor(t.dueTs, now) === "overdue");
+    const report =
+      reports.find((r) => isReportFrom(r.submitted_by, m.full_name)) ?? null;
 
-    const hrs = hoursFor(key)
-    lines.push(`### ${m.full_name}${m.role_description ? ` — ${m.role_description}` : ''}`)
-    lines.push(`  - Tasks: ${stats?.total ?? tasks.length} open · ${stats?.overdue ?? overdue.length} overdue · ${stats?.urgent ?? 0} urgent${hrs != null ? ` · ${hrs}h logged this week` : ''}`)
-    lines.push(`  - Weekly report (this week): ${report ? 'FILED' : (m.files_report ? 'NOT FILED' : 'exempt')}`)
+    const hrs = hoursFor(key);
+    lines.push(
+      `### ${m.full_name}${m.role_description ? ` - ${m.role_description}` : ""}`,
+    );
+    lines.push(
+      `  - Tasks: ${stats?.total ?? tasks.length} open · ${stats?.overdue ?? overdue.length} overdue · ${stats?.urgent ?? 0} urgent${hrs != null ? ` · ${hrs}h logged this week` : ""}`,
+    );
+    lines.push(
+      `  - Weekly report (this week): ${report ? "FILED" : m.files_report ? "NOT FILED" : "exempt"}`,
+    );
     if (report) {
-      if (report.win) lines.push(`    · Win: ${report.win}`)
-      if (report.priorities) lines.push(`    · Priorities: ${report.priorities}`)
-      if (report.blockers) lines.push(`    · Blockers: ${report.blockers}`)
+      if (report.win) lines.push(`    · Win: ${report.win}`);
+      if (report.priorities)
+        lines.push(`    · Priorities: ${report.priorities}`);
+      if (report.blockers) lines.push(`    · Blockers: ${report.blockers}`);
     }
     const topLoops = [...tasks]
-      .sort((a, b) => (a.priority === 'urgent' ? 0 : 1) - (b.priority === 'urgent' ? 0 : 1) || (a.dueTs ?? Infinity) - (b.dueTs ?? Infinity))
-      .slice(0, 3)
+      .sort(
+        (a, b) =>
+          (a.priority === "urgent" ? 0 : 1) -
+            (b.priority === "urgent" ? 0 : 1) ||
+          (a.dueTs ?? Infinity) - (b.dueTs ?? Infinity),
+      )
+      .slice(0, 3);
     if (topLoops.length) {
-      lines.push(`  - Open loops (top ${topLoops.length}${tasks.length > 5 ? ` of ${tasks.length}` : ''}):`)
-      topLoops.forEach(t => lines.push(loopLine(t)))
+      lines.push(
+        `  - Open loops (top ${topLoops.length}${tasks.length > 5 ? ` of ${tasks.length}` : ""}):`,
+      );
+      topLoops.forEach((t) => lines.push(loopLine(t)));
     }
-    lines.push('')
+    lines.push("");
   }
 
   if (!scoped.length) {
-    lines.push('(No matching team record found for this user — answer generally and note the account is not linked to a team profile.)')
+    lines.push(
+      "(No matching team record found for this user - answer generally and note the account is not linked to a team profile.)",
+    );
   }
 
-  // ── Recent meetings (Fireflies) — powers /prep ──
-  let meetings = ff
+  // ── Recent meetings (Fireflies) - powers /prep ──
+  let meetings = ff;
   if (!isAdmin && me) {
-    const nm = me.full_name.toLowerCase()
-    const em = (me.email ?? '').toLowerCase()
-    meetings = ff.filter(mt =>
-      mt.teamParticipants?.some(p => p.toLowerCase().includes(nm) || nm.includes(p.toLowerCase())) ||
-      (em && mt.matchedEmails?.some(e => e.toLowerCase() === em)))
+    const nm = me.full_name.toLowerCase();
+    const em = (me.email ?? "").toLowerCase();
+    meetings = ff.filter(
+      (mt) =>
+        mt.teamParticipants?.some(
+          (p) => p.toLowerCase().includes(nm) || nm.includes(p.toLowerCase()),
+        ) ||
+        (em && mt.matchedEmails?.some((e) => e.toLowerCase() === em)),
+    );
   }
   if (meetings.length) {
-    lines.push(`## RECENT MEETINGS (Fireflies) — use for /prep and context`)
+    lines.push(`## RECENT MEETINGS (Fireflies) - use for /prep and context`);
     for (const mt of meetings.slice(0, 3)) {
-      lines.push(`### ${mt.title} — ${mt.date}`)
-      if (mt.participants?.length) lines.push(`  - Participants: ${mt.participants.slice(0, 5).join(', ')}`)
-      if (mt.overview) lines.push(`  - Overview: ${mt.overview.replace(/\s+/g, ' ').slice(0, 150)}`)
-      if (mt.actionItems) lines.push(`  - Actions: ${mt.actionItems.replace(/\s+/g, ' ').slice(0, 150)}`)
+      lines.push(`### ${mt.title} - ${mt.date}`);
+      if (mt.participants?.length)
+        lines.push(
+          `  - Participants: ${mt.participants.slice(0, 5).join(", ")}`,
+        );
+      if (mt.overview)
+        lines.push(
+          `  - Overview: ${mt.overview.replace(/\s+/g, " ").slice(0, 150)}`,
+        );
+      if (mt.actionItems)
+        lines.push(
+          `  - Actions: ${mt.actionItems.replace(/\s+/g, " ").slice(0, 150)}`,
+        );
     }
-    lines.push('')
+    lines.push("");
+  }
+
+  // ── Website analytics (GA4) - visible to everyone, not role-scoped ──
+  const analyticsSnapshots = await Promise.all(
+    ANALYTICS_SITES.map((s) =>
+      getCachedSWR<AnalyticsSnapshot>(`analytics-${s.id}`)
+        .then((r) => ({ site: s, data: r.data }))
+        .catch(() => ({ site: s, data: null })),
+    ),
+  );
+  const withAnalytics = analyticsSnapshots.filter(
+    (
+      r,
+    ): r is {
+      site: (typeof ANALYTICS_SITES)[number];
+      data: AnalyticsSnapshot;
+    } => !!r.data,
+  );
+  if (withAnalytics.length) {
+    lines.push(
+      "## WEBSITE ANALYTICS (Google Analytics 4 - refreshed periodically)",
+    );
+    for (const { site, data } of withAnalytics) {
+      lines.push(`### ${site.label}`);
+      lines.push(
+        `  - Today: ${data.today.sessions} sessions, ${data.today.pageviews} pageviews, avg session ${Math.round(data.today.avgSessionDurationSec / 60)}m`,
+      );
+      lines.push(
+        `  - Yesterday: ${data.yesterday.sessions} sessions, ${data.yesterday.pageviews} pageviews`,
+      );
+      if (data.topPages.length) {
+        lines.push(
+          `  - Best performing pages (7d): ${data.topPages
+            .slice(0, 5)
+            .map((p) => `${p.title || p.path} (${p.pageviews} views)`)
+            .join("; ")}`,
+        );
+      }
+      lines.push(
+        data.notFoundPages.length
+          ? `  - ⚠️ Pages erroring (404/not-found, 7d): ${data.notFoundPages.map((p) => p.path).join(", ")}`
+          : `  - No 404/not-found pages detected this week.`,
+      );
+      // Day-by-day breakdown so a question about a specific date ("how many
+      // sessions on Aug 5?") can be answered directly instead of only the
+      // today/yesterday/7d/28d rollups above. audience.trend covers the most
+      // days (29); older snapshots cached before audience data existed won't
+      // have it, so fall back to the 8-day sessions-only trend.
+      const dayRows = data.audience?.trend?.length
+        ? data.audience.trend.map(
+            (d) =>
+              `${fmtYyyymmdd(d.date)}: ${d.sessions} sessions, ${d.views} views, ${d.newUsers} new users`,
+          )
+        : data.trend.map((d) => `${fmtYyyymmdd(d.date)}: ${d.sessions} sessions`);
+      if (dayRows.length) {
+        lines.push(`  - Day-by-day (oldest to newest):`);
+        lines.push(`    ${dayRows.join(" | ")}`);
+      }
+    }
+    lines.push("");
   }
 
   // ── Recent Slack activity (admins) ──
   if (isAdmin && slackMsgs.length) {
-    lines.push(`## RECENT SLACK ACTIVITY (last messages across channels)`)
+    lines.push(`## RECENT SLACK ACTIVITY (last messages across channels)`);
     for (const m of slackMsgs.slice(0, 5)) {
-      const when = new Date(m.ts).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
-      lines.push(`  - [#${m.channel}] ${m.user} (${when}): ${m.text.replace(/\s+/g, ' ').slice(0, 80)}`)
+      const when = new Date(m.ts).toLocaleDateString("en-US", {
+        month: "short",
+        day: "numeric",
+      });
+      lines.push(
+        `  - [#${m.channel}] ${m.user} (${when}): ${m.text.replace(/\s+/g, " ").slice(0, 80)}`,
+      );
     }
-    lines.push('')
+    lines.push("");
   }
 
-  return lines.join('\n')
+  return lines.join("\n");
 }
