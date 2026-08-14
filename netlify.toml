@@ -43,12 +43,19 @@
   #   ANTHROPIC_API_KEY_REPORTS  = sk-ant-...  (Claude token "vcos-reports" - powers weekly-reports,
   #                                             kickoff-brief, and the scheduled morning brief)
   #   SLACK_BRIEF_CHANNEL      = (optional) channel ID for the morning brief; defaults to SLACK_ADMIN_CHANNEL
+  #   X_CONSUMER_KEY           = ... (OAuth 1.0a, "RampRate Dashboard" app, shared by both X accounts)
+  #   X_CONSUMER_KEY_SECRET    = ...
+  #   X_RAMPRATE_ACCESS_TOKEN         = ... (per-account OAuth 1.0a access token)
+  #   X_RAMPRATE_ACCESS_TOKEN_SECRET  = ...
+  #   X_TONY_ACCESS_TOKEN             = ... (OAuth 1.0a access token, via the PIN flow)
+  #   X_TONY_ACCESS_TOKEN_SECRET      = ...
 
 # ── SCHEDULED FUNCTIONS (netlify/functions/) ───────────────────
 #   cron-refresh   · 0 14 * * *     daily cache refresh (ClickUp/Slack/WebWork/Fireflies), 7 AM PT
 #   daily-report   · 0 14 * * *     daily standup compile
 #   invoice-sync   · (see file)     ClickUp → invoices
 #   morning-brief  · 15 14 * * 1-5  VCoS-AI /gm brief → Slack, weekday mornings (7:15 AM PDT)
+#   x-refresh      · */20 * * * *   X (Twitter) cache refresh, both accounts
 
 # ── NEXT.JS PLUGIN ─────────────────────────────────────────────
 [[plugins]]

@@ -6,12 +6,18 @@ import StaleBadge from "@/components/StaleBadge";
 import Skeleton from "@/components/Skeleton";
 import TabBar from "@/components/TabBar";
 import { useRefresh } from "@/components/RefreshContext";
-import { ANALYTICS_SITES, type AnalyticsSiteId } from "@/lib/constants";
+import {
+  ANALYTICS_SITES,
+  X_ACCOUNTS,
+  type AnalyticsSiteId,
+  type XAccountId,
+} from "@/lib/constants";
 import type {
   AnalyticsSnapshot,
   PageRow,
   BreakdownRow,
 } from "@/lib/google-analytics";
+import type { XSnapshot, XTweet } from "@/lib/x-analytics";
 import dynamic from "next/dynamic";
 const AnalyticsSparkline = dynamic(
   () => import("@/components/charts/AnalyticsSparkline"),
@@ -28,13 +34,40 @@ const BADGE_COLORS: Record<AnalyticsSiteId, string> = {
   tonygreenberg: "#1BAF7A",
 };
 
-type TabId = "overview" | AnalyticsSiteId;
+const X_BADGE_COLORS: Record<XAccountId, string> = {
+  ramprate: "#0F1419",
+  tony: "#1D9BF0",
+};
+
+// X account tabs are namespaced "x-<accountId>" so they can't collide with
+// website AnalyticsSiteId tabs (both happen to use "ramprate" as an id).
+type XTabId = `x-${XAccountId}`;
+type TabId = "overview" | AnalyticsSiteId | XTabId;
+
+function isXTab(tab: TabId): tab is XTabId {
+  return tab.startsWith("x-");
+}
+function xAccountFromTab(tab: XTabId): XAccountId {
+  return tab.slice(2) as XAccountId;
+}
+
 const TABS: { id: TabId; label: string }[] = [
   { id: "overview", label: "Dashboard" },
   ...ANALYTICS_SITES.map((s) => ({ id: s.id as TabId, label: s.label })),
+  ...X_ACCOUNTS.map((a) => ({
+    id: `x-${a.id}` as TabId,
+    label: `X · ${a.label}`,
+  })),
 ];
 
 type SnapshotState = AnalyticsSnapshot & {
+  error?: string | null;
+  circuitOpen?: boolean;
+  _stale?: boolean;
+  _ageMinutes?: number;
+};
+
+type XSnapshotState = XSnapshot & {
   error?: string | null;
   circuitOpen?: boolean;
   _stale?: boolean;
@@ -162,12 +195,16 @@ function BreakdownList({
 // ── Dashboard tab - the condensed, most-important-things-only overview ──────
 function OverviewPanel({
   snapshots,
+  xSnapshots,
   loading,
   onOpenSite,
+  onOpenXAccount,
 }: {
   snapshots: Record<AnalyticsSiteId, SnapshotState | null>;
+  xSnapshots: Record<XAccountId, XSnapshotState | null>;
   loading: boolean;
   onOpenSite: (site: AnalyticsSiteId) => void;
+  onOpenXAccount: (account: XAccountId) => void;
 }) {
   const errorSites = ANALYTICS_SITES.filter(
     (s) => (snapshots[s.id]?.notFoundPages.length ?? 0) > 0,
@@ -246,6 +283,50 @@ function OverviewPanel({
         Full traffic, trends, top pages, and 404s for each site are in their own
         tab above.
       </p>
+
+      <div className="slbl mt-6">Social - X (Twitter)</div>
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        {X_ACCOUNTS.map((a) => {
+          const snap = xSnapshots[a.id];
+          return (
+            <button
+              key={a.id}
+              onClick={() => onOpenXAccount(a.id)}
+              className="card text-left px-4 py-3 hover:border-accent hover:shadow-card-md transition-all"
+            >
+              <div className="flex items-center gap-2 mb-1">
+                <span
+                  className="w-2 h-2 rounded-full flex-shrink-0"
+                  style={{ background: X_BADGE_COLORS[a.id] }}
+                />
+                <span className="text-xs font-bold uppercase tracking-widest text-ink3 truncate">
+                  {a.label}
+                </span>
+              </div>
+              {loading ? (
+                <>
+                  <Skeleton className="h-7 w-16 mt-0.5" />
+                  <Skeleton className="h-3 w-28 mt-2" />
+                </>
+              ) : !snap || snap.followersCount === undefined ? (
+                <div className="text-xs text-ink4 mt-1">
+                  {snap?.error ?? "No data"}
+                </div>
+              ) : (
+                <>
+                  <div className="font-serif font-black text-2xl mt-0.5">
+                    {snap.followersCount.toLocaleString()}
+                  </div>
+                  <div className="text-xs text-ink4">
+                    followers · {snap.last7d.impressions.toLocaleString()}{" "}
+                    impressions (7d)
+                  </div>
+                </>
+              )}
+            </button>
+          );
+        })}
+      </div>
     </section>
   );
 }
@@ -510,11 +591,134 @@ function SiteSection({
   );
 }
 
+function XTweetRow({ tweet }: { tweet: XTweet }) {
+  return (
+    <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1 sm:gap-3 py-3 overflow-hidden">
+      <div className="min-w-0">
+        <div className="text-sm truncate" title={tweet.text}>
+          {tweet.text}
+        </div>
+        <div className="text-xs text-ink4">
+          {new Date(tweet.createdAt).toLocaleDateString()}
+        </div>
+      </div>
+      <div className="flex items-center flex-wrap gap-1.5 flex-shrink-0">
+        <span className="badge-accent whitespace-nowrap">
+          {tweet.impressionCount.toLocaleString()} impressions
+        </span>
+        <span className="badge whitespace-nowrap">
+          {tweet.engagementCount.toLocaleString()} engagements
+        </span>
+      </div>
+    </div>
+  );
+}
+
+function XSection({
+  color,
+  snapshot,
+  loading,
+}: {
+  color: string;
+  snapshot: XSnapshotState | null;
+  loading: boolean;
+}) {
+  return (
+    <section>
+      {snapshot && (
+        <div className="flex items-center justify-end mb-3">
+          <StaleBadge
+            ageMinutes={snapshot._ageMinutes}
+            circuitOpen={snapshot.circuitOpen}
+            error={snapshot.error ?? undefined}
+          />
+        </div>
+      )}
+
+      {loading ? (
+        <SiteSectionSkeleton />
+      ) : !snapshot || snapshot.followersCount === undefined ? (
+        <div className="card p-6 text-center text-ink4 text-sm">
+          {snapshot?.error ?? "No data available."}
+        </div>
+      ) : (
+        <>
+          <div className="flex items-center gap-2 mb-3">
+            <span
+              className="w-2 h-2 rounded-full flex-shrink-0"
+              style={{ background: color }}
+            />
+            <span className="text-sm font-semibold">@{snapshot.username}</span>
+          </div>
+
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-3">
+            <div className="border border-sand3 p-3">
+              <div className="text-xs font-bold uppercase tracking-widest text-ink3">
+                Followers
+              </div>
+              <div className="font-serif font-black text-2xl mt-0.5">
+                {snapshot.followersCount.toLocaleString()}
+              </div>
+            </div>
+            <div className="border border-sand3 p-3">
+              <div className="text-xs font-bold uppercase tracking-widest text-ink3">
+                Tweets (7d)
+              </div>
+              <div className="font-serif font-black text-2xl mt-0.5">
+                {snapshot.last7d.tweetsPosted.toLocaleString()}
+              </div>
+            </div>
+            <div className="border border-sand3 p-3">
+              <div className="text-xs font-bold uppercase tracking-widest text-ink3">
+                Impressions (7d)
+              </div>
+              <div className="font-serif font-black text-2xl mt-0.5">
+                {snapshot.last7d.impressions.toLocaleString()}
+              </div>
+            </div>
+            <div className="border border-sand3 p-3">
+              <div className="text-xs font-bold uppercase tracking-widest text-ink3">
+                Engagements (7d)
+              </div>
+              <div className="font-serif font-black text-2xl mt-0.5">
+                {snapshot.last7d.engagements.toLocaleString()}
+              </div>
+            </div>
+          </div>
+
+          <div className="card px-4">
+            <div className="slbl text-xs flex items-center gap-1.5">
+              <FiTrendingUp className="w-3.5 h-3.5 text-ink4" />
+              Top Tweets (7d)
+            </div>
+            {snapshot.topTweets.length === 0 ? (
+              <div className="flex flex-col items-center justify-center text-center gap-2 py-8">
+                <p className="text-xs text-ink4">
+                  No tweets in the last 7 days.
+                </p>
+              </div>
+            ) : (
+              <div className="divide-y divide-sand3 overflow-hidden">
+                {snapshot.topTweets.map((t) => (
+                  <XTweetRow key={t.id} tweet={t} />
+                ))}
+              </div>
+            )}
+          </div>
+        </>
+      )}
+    </section>
+  );
+}
+
 export default function AnalyticsPage() {
   const [tab, setTab] = useState<TabId>("overview");
   const [snapshots, setSnapshots] = useState<
     Record<AnalyticsSiteId, SnapshotState | null>
   >({} as Record<AnalyticsSiteId, SnapshotState | null>);
+  const [xSnapshots, setXSnapshots] = useState<
+    Record<XAccountId, XSnapshotState | null>
+  >({} as Record<XAccountId, XSnapshotState | null>);
   const [loading, setLoading] = useState(true);
   const { refreshKey } = useRefresh();
 
@@ -534,10 +738,33 @@ export default function AnalyticsPage() {
     setLoading(false);
   }
 
+  async function fetchXAccounts(ids: XAccountId[]) {
+    setLoading(true);
+    const results = await Promise.all(
+      ids.map((id) =>
+        fetch(`/api/x-analytics?account=${id}`, { cache: "no-store" })
+          .then((r) => r.json())
+          .catch(() => null),
+      ),
+    );
+    setXSnapshots((prev) => ({
+      ...prev,
+      ...Object.fromEntries(ids.map((id, i) => [id, results[i]])),
+    }));
+    setLoading(false);
+  }
+
   // Refetches whenever the header's global "Refresh" button bumps refreshKey
-  // (which also live-refreshes the underlying GA4 cache - see Topbar.tsx).
+  // (which also live-refreshes the underlying GA4/X caches - see Topbar.tsx).
   useEffect(() => {
-    fetchSites(tab === "overview" ? ANALYTICS_SITES.map((s) => s.id) : [tab]);
+    if (tab === "overview") {
+      fetchSites(ANALYTICS_SITES.map((s) => s.id));
+      fetchXAccounts(X_ACCOUNTS.map((a) => a.id));
+    } else if (isXTab(tab)) {
+      fetchXAccounts([xAccountFromTab(tab)]);
+    } else {
+      fetchSites([tab]);
+    }
   }, [tab, refreshKey]);
 
   return (
@@ -550,8 +777,16 @@ export default function AnalyticsPage() {
         {tab === "overview" ? (
           <OverviewPanel
             snapshots={snapshots}
+            xSnapshots={xSnapshots}
             loading={loading}
             onOpenSite={setTab}
+            onOpenXAccount={(id) => setTab(`x-${id}`)}
+          />
+        ) : isXTab(tab) ? (
+          <XSection
+            color={X_BADGE_COLORS[xAccountFromTab(tab)]}
+            snapshot={xSnapshots[xAccountFromTab(tab)] ?? null}
+            loading={loading}
           />
         ) : (
           <SiteSection

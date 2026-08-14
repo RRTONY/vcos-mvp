@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { useRefresh } from "./RefreshContext";
 import { useMe } from "@/hooks/useMe";
 import { RAMPRATE_LOGO_B64 } from "@/lib/logo";
-import { ANALYTICS_SITES } from "@/lib/constants";
+import { ANALYTICS_SITES, X_ACCOUNTS } from "@/lib/constants";
 import { FiRefreshCw } from "react-icons/fi";
 
 export default function Topbar() {
@@ -34,6 +34,9 @@ export default function Topbar() {
       fetch("/api/fireflies-meetings", { method: "POST" }),
       ...ANALYTICS_SITES.map((s) =>
         fetch(`/api/analytics?site=${s.id}`, { method: "POST" }),
+      ),
+      ...X_ACCOUNTS.map((a) =>
+        fetch(`/api/x-analytics?account=${a.id}`, { method: "POST" }),
       ),
     ]);
     triggerRefresh();

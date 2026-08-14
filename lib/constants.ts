@@ -33,6 +33,7 @@ export const INVOICE_PENDING_ALERT_DAYS = 7; // days pending → flag in open lo
 export const CACHE_TTL_SYSTEMS_MS = 5 * 60 * 1000; // 5 min
 export const CACHE_TTL_INVOICES_MS = 5 * 60 * 1000; // 5 min
 export const CACHE_TTL_ANALYTICS_MS = 15 * 60 * 1000; // 15 min - GA4 data doesn't need to be fresher than this
+export const CACHE_TTL_X_MS = 20 * 60 * 1000; // 20 min - matches the ~15-30 min poll interval X's pay-per-usage billing was sized around
 
 // Website analytics sites - each backed by its own GA4 property, read via a
 // shared Google service account (see lib/google-analytics.ts).
@@ -55,3 +56,23 @@ export const ANALYTICS_SITES = [
 ] as const;
 
 export type AnalyticsSiteId = (typeof ANALYTICS_SITES)[number]["id"];
+
+// X (Twitter) accounts tracked on the dashboard - both authorized under the
+// same "RampRate Dashboard" developer app (see lib/x-analytics.ts), just with
+// different per-account access tokens.
+export const X_ACCOUNTS = [
+  {
+    id: "ramprate",
+    label: "RampRate",
+    accessTokenEnvVar: "X_RAMPRATE_ACCESS_TOKEN",
+    accessTokenSecretEnvVar: "X_RAMPRATE_ACCESS_TOKEN_SECRET",
+  },
+  {
+    id: "tony",
+    label: "Tony Greenberg",
+    accessTokenEnvVar: "X_TONY_ACCESS_TOKEN",
+    accessTokenSecretEnvVar: "X_TONY_ACCESS_TOKEN_SECRET",
+  },
+] as const;
+
+export type XAccountId = (typeof X_ACCOUNTS)[number]["id"];
