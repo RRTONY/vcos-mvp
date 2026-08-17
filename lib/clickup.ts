@@ -267,3 +267,14 @@ export async function updateTaskStatus(taskId: string, status: string) {
   if (!res.ok) throw new Error(`ClickUp updateTask ${res.status}`);
   return res.json();
 }
+
+// Closes a task without the caller having to know the list's exact "closed"
+// status name - ClickUp statuses are custom per-list (e.g. "Complete",
+// "Closed", "done"), so a hardcoded "Done" would silently no-op on lists that
+// spell it differently.
+export async function closeTask(taskId: string, listId: string) {
+  const statuses = await getListStatuses(listId);
+  const closed = statuses.find((s) => s.type === "closed");
+  if (!closed) throw new Error(`No closed status configured for list ${listId}`);
+  return updateTaskStatus(taskId, closed.status);
+}

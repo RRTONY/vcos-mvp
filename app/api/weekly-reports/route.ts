@@ -17,6 +17,7 @@ import {
   type TaskReviewStatus,
 } from "@/lib/open-tasks";
 import { bucketFor } from "@/lib/due-buckets";
+import { closeTask } from "@/lib/clickup";
 import type { ClickUpData } from "@/lib/types";
 
 import {
@@ -76,6 +77,18 @@ async function buildOpenTasksLines(
       /* malformed - fall back to "Not reviewed" for every task */
     }
   }
+
+  // Push every task reviewed as "Done" back to ClickUp so the report is the
+  // source of truth for status, not just a Slack-side label. Best-effort per
+  // task - a ClickUp failure must never block the report from posting.
+  const doneTasks = tasks.filter((t) => statusMap.get(t.id)?.status === "done");
+  await Promise.all(
+    doneTasks.map((t) =>
+      closeTask(t.id, t.listId).catch((err) =>
+        console.error(`ClickUp close failed for task ${t.id}:`, err),
+      ),
+    ),
+  );
 
   const now = new Date();
   return tasks.map((t) => {
