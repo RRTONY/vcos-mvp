@@ -1,7 +1,7 @@
 'use client'
 
 import {
-  BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell,
+  BarChart, Bar, XAxis, YAxis, ResponsiveContainer, Cell, LabelList,
 } from 'recharts'
 import type { WebWorkMember } from '@/lib/types'
 
@@ -46,15 +46,16 @@ export default function HoursBar({ members }: Props) {
           tickLine={false}
           tickFormatter={(v) => `${v}h`}
         />
-        <Tooltip
-          formatter={(v) => [`${v}h`]}
-          contentStyle={{ fontSize: 12, border: '1px solid #E5E7EB', borderRadius: 6 }}
-          cursor={{ fill: '#F3F4F6' }}
-        />
         <Bar dataKey="hours" radius={[4, 4, 0, 0]} maxBarSize={48}>
           {data.map((_, i) => (
             <Cell key={i} fill={BAR_COLORS[Math.min(i, BAR_COLORS.length - 1)]} />
           ))}
+          <LabelList
+            dataKey="hours"
+            position="top"
+            formatter={(v: unknown) => `${(v as number) ?? 0}h`}
+            style={{ fontSize: 11, fill: '#374151', fontWeight: 600 }}
+          />
         </Bar>
       </BarChart>
     </ResponsiveContainer>

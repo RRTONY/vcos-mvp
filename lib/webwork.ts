@@ -11,6 +11,29 @@ function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+// A full snapshot fires one request per member per day (11 members x 14 days
+// = 154+ requests). Firing them all at once used to trip WebWork's rate
+// limiter and knock out an unpredictable subset of members - this queue caps
+// how many are ever in flight at once, the same way lib/clickup.ts batches
+// its own requests.
+const MAX_CONCURRENT = 8;
+let activeRequests = 0;
+const waiters: (() => void)[] = [];
+
+function acquireSlot(): Promise<void> {
+  if (activeRequests < MAX_CONCURRENT) {
+    activeRequests++;
+    return Promise.resolve();
+  }
+  return new Promise((resolve) => waiters.push(resolve));
+}
+
+function releaseSlot() {
+  const next = waiters.shift();
+  if (next) next();
+  else activeRequests--;
+}
+
 export interface DayHours {
   date: string;
   minutes: number;
@@ -35,23 +58,31 @@ export async function getMemberHours(
   date: string,
   attempt = 0,
 ): Promise<DayHours> {
-  const MAX_ATTEMPTS = 3;
+  const MAX_ATTEMPTS = 4;
+  await acquireSlot();
   let res: Response;
   try {
     res = await fetch(`${BASE}/time-entries?user_id=${userId}&date=${date}`, {
       headers: headers(),
     });
   } catch {
+    releaseSlot();
     if (attempt + 1 < MAX_ATTEMPTS) {
       await sleep(300 * (attempt + 1));
       return getMemberHours(userId, date, attempt + 1);
     }
     return { date, minutes: 0, entries: [], ok: false };
   }
+  releaseSlot();
 
   if (!res.ok) {
     if (attempt + 1 < MAX_ATTEMPTS) {
-      await sleep(300 * (attempt + 1));
+      const retryAfterSec = Number(res.headers.get("Retry-After"));
+      const waitMs =
+        res.status === 429 && Number.isFinite(retryAfterSec) && retryAfterSec > 0
+          ? retryAfterSec * 1000
+          : 400 * 2 ** attempt;
+      await sleep(waitMs);
       return getMemberHours(userId, date, attempt + 1);
     }
     console.error(

@@ -65,10 +65,6 @@ const OkrRings = dynamic(() => import("@/components/charts/OkrRing"), {
 const TrendCards = dynamic(() => import("@/components/charts/TrendCards"), {
   ssr: false,
 });
-const DayStackedBar = dynamic(
-  () => import("@/components/charts/DayStackedBar"),
-  { ssr: false },
-);
 const SlackHeatMap = dynamic(() => import("@/components/charts/SlackHeatMap"), {
   ssr: false,
 });
@@ -1380,9 +1376,6 @@ export default function ReportsPage() {
                     <div className="slbl mb-0 text-xs">Hours This Week</div>
                     <HoursBar members={webworkData.members} />
                   </div>
-
-                  {/* Stacked by day */}
-                  <DayStackedBar members={webworkData.members} />
 
                   {/* Detail rows */}
                   <div className="card divide-y divide-sand3">
