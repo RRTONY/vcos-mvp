@@ -9,8 +9,10 @@ import { useRefresh } from "@/components/RefreshContext";
 import {
   ANALYTICS_SITES,
   X_ACCOUNTS,
+  LINKEDIN_ACCOUNTS,
   type AnalyticsSiteId,
   type XAccountId,
+  type LinkedInAccountId,
 } from "@/lib/constants";
 import type {
   AnalyticsSnapshot,
@@ -18,6 +20,7 @@ import type {
   BreakdownRow,
 } from "@/lib/google-analytics";
 import type { XSnapshot, XTweet } from "@/lib/x-analytics";
+import type { LinkedInSnapshot } from "@/lib/linkedin-analytics";
 import dynamic from "next/dynamic";
 const AnalyticsSparkline = dynamic(
   () => import("@/components/charts/AnalyticsSparkline"),
@@ -39,16 +42,30 @@ const X_BADGE_COLORS: Record<XAccountId, string> = {
   tony: "#1D9BF0",
 };
 
-// X account tabs are namespaced "x-<accountId>" so they can't collide with
-// website AnalyticsSiteId tabs (both happen to use "ramprate" as an id).
+const LINKEDIN_BADGE_COLORS: Record<LinkedInAccountId, string> = {
+  ramprate: "#0A66C2",
+};
+
+// X account tabs are namespaced "x-<accountId>", LinkedIn "li-<accountId>",
+// so neither collides with website AnalyticsSiteId tabs (both happen to use
+// "ramprate" as an id). "linkedin-tony" is a fixed, non-parameterized tab -
+// there's no LinkedInAccountId for Tony since his personal profile has no
+// working data pipeline (see lib/linkedin-analytics.ts's comment on why).
 type XTabId = `x-${XAccountId}`;
-type TabId = "overview" | AnalyticsSiteId | XTabId;
+type LinkedInTabId = `li-${LinkedInAccountId}`;
+type TabId = "overview" | AnalyticsSiteId | XTabId | LinkedInTabId | "linkedin-tony";
 
 function isXTab(tab: TabId): tab is XTabId {
   return tab.startsWith("x-");
 }
 function xAccountFromTab(tab: XTabId): XAccountId {
   return tab.slice(2) as XAccountId;
+}
+function isLinkedInTab(tab: TabId): tab is LinkedInTabId {
+  return tab.startsWith("li-");
+}
+function linkedInAccountFromTab(tab: LinkedInTabId): LinkedInAccountId {
+  return tab.slice(3) as LinkedInAccountId;
 }
 
 const TABS: { id: TabId; label: string }[] = [
@@ -58,6 +75,11 @@ const TABS: { id: TabId; label: string }[] = [
     id: `x-${a.id}` as TabId,
     label: `X · ${a.label}`,
   })),
+  ...LINKEDIN_ACCOUNTS.map((a) => ({
+    id: `li-${a.id}` as TabId,
+    label: `LinkedIn · ${a.label}`,
+  })),
+  { id: "linkedin-tony" as TabId, label: "LinkedIn · Tony Greenberg" },
 ];
 
 type SnapshotState = AnalyticsSnapshot & {
@@ -68,6 +90,13 @@ type SnapshotState = AnalyticsSnapshot & {
 };
 
 type XSnapshotState = XSnapshot & {
+  error?: string | null;
+  circuitOpen?: boolean;
+  _stale?: boolean;
+  _ageMinutes?: number;
+};
+
+type LinkedInSnapshotState = LinkedInSnapshot & {
   error?: string | null;
   circuitOpen?: boolean;
   _stale?: boolean;
@@ -196,15 +225,21 @@ function BreakdownList({
 function OverviewPanel({
   snapshots,
   xSnapshots,
+  linkedInSnapshots,
   loading,
   onOpenSite,
   onOpenXAccount,
+  onOpenLinkedIn,
+  onOpenLinkedInTonyInfo,
 }: {
   snapshots: Record<AnalyticsSiteId, SnapshotState | null>;
   xSnapshots: Record<XAccountId, XSnapshotState | null>;
+  linkedInSnapshots: Record<LinkedInAccountId, LinkedInSnapshotState | null>;
   loading: boolean;
   onOpenSite: (site: AnalyticsSiteId) => void;
   onOpenXAccount: (account: XAccountId) => void;
+  onOpenLinkedIn: (account: LinkedInAccountId) => void;
+  onOpenLinkedInTonyInfo: () => void;
 }) {
   const errorSites = ANALYTICS_SITES.filter(
     (s) => (snapshots[s.id]?.notFoundPages.length ?? 0) > 0,
@@ -326,6 +361,64 @@ function OverviewPanel({
             </button>
           );
         })}
+      </div>
+
+      <div className="slbl mt-6">Social - LinkedIn</div>
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        {LINKEDIN_ACCOUNTS.map((a) => {
+          const snap = linkedInSnapshots[a.id];
+          return (
+            <button
+              key={a.id}
+              onClick={() => onOpenLinkedIn(a.id)}
+              className="card text-left px-4 py-3 hover:border-accent hover:shadow-card-md transition-all"
+            >
+              <div className="flex items-center gap-2 mb-1">
+                <span
+                  className="w-2 h-2 rounded-full flex-shrink-0"
+                  style={{ background: LINKEDIN_BADGE_COLORS[a.id] }}
+                />
+                <span className="text-xs font-bold uppercase tracking-widest text-ink3 truncate">
+                  {a.label}
+                </span>
+              </div>
+              {loading ? (
+                <>
+                  <Skeleton className="h-7 w-16 mt-0.5" />
+                  <Skeleton className="h-3 w-28 mt-2" />
+                </>
+              ) : !snap || snap.followersCount === undefined ? (
+                <div className="text-xs text-ink4 mt-1">
+                  {snap?.error ?? "Not connected yet"}
+                </div>
+              ) : (
+                <>
+                  <div className="font-serif font-black text-2xl mt-0.5">
+                    {snap.followersCount.toLocaleString()}
+                  </div>
+                  <div className="text-xs text-ink4">
+                    followers ·{" "}
+                    {snap.lifetime.impressions.toLocaleString()} impressions
+                  </div>
+                </>
+              )}
+            </button>
+          );
+        })}
+        <button
+          onClick={onOpenLinkedInTonyInfo}
+          className="card text-left px-4 py-3 hover:border-accent hover:shadow-card-md transition-all"
+        >
+          <div className="flex items-center gap-2 mb-1">
+            <span className="w-2 h-2 rounded-full flex-shrink-0 bg-ink4" />
+            <span className="text-xs font-bold uppercase tracking-widest text-ink3 truncate">
+              Tony Greenberg
+            </span>
+          </div>
+          <div className="text-xs text-ink4 mt-1">
+            Not available - platform limitation, see details
+          </div>
+        </button>
       </div>
     </section>
   );
@@ -711,6 +804,164 @@ function XSection({
   );
 }
 
+function LinkedInSection({
+  color,
+  snapshot,
+  loading,
+}: {
+  color: string;
+  snapshot: LinkedInSnapshotState | null;
+  loading: boolean;
+}) {
+  return (
+    <section>
+      {snapshot && (
+        <div className="flex items-center justify-end mb-3">
+          <StaleBadge
+            ageMinutes={snapshot._ageMinutes}
+            circuitOpen={snapshot.circuitOpen}
+            error={snapshot.error ?? undefined}
+          />
+        </div>
+      )}
+
+      {loading ? (
+        <SiteSectionSkeleton />
+      ) : !snapshot || snapshot.followersCount === undefined ? (
+        <div className="card p-6 text-center text-ink4 text-sm">
+          {snapshot?.error ??
+            "Not connected yet - needs a LinkedIn Marketing Developer Platform app (see LinkedIn · Tony Greenberg tab for the full picture)."}
+        </div>
+      ) : (
+        <>
+          <div className="flex items-center gap-2 mb-3">
+            <span
+              className="w-2 h-2 rounded-full flex-shrink-0"
+              style={{ background: color }}
+            />
+            <span className="text-sm font-semibold">Company Page</span>
+          </div>
+
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mb-3">
+            <div className="border border-sand3 p-3">
+              <div className="text-xs font-bold uppercase tracking-widest text-ink3">
+                Followers
+              </div>
+              <div className="font-serif font-black text-2xl mt-0.5">
+                {snapshot.followersCount.toLocaleString()}
+              </div>
+            </div>
+            <div className="border border-sand3 p-3">
+              <div className="text-xs font-bold uppercase tracking-widest text-ink3">
+                Impressions (lifetime)
+              </div>
+              <div className="font-serif font-black text-2xl mt-0.5">
+                {snapshot.lifetime.impressions.toLocaleString()}
+              </div>
+            </div>
+            <div className="border border-sand3 p-3">
+              <div className="text-xs font-bold uppercase tracking-widest text-ink3">
+                Engagement (lifetime)
+              </div>
+              <div className="font-serif font-black text-2xl mt-0.5">
+                {(
+                  snapshot.lifetime.likes +
+                  snapshot.lifetime.comments +
+                  snapshot.lifetime.shares
+                ).toLocaleString()}
+              </div>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-3 gap-3">
+            <div className="border border-sand3 p-3">
+              <div className="text-xs font-bold uppercase tracking-widest text-ink3">
+                Likes
+              </div>
+              <div className="font-serif font-black text-lg mt-0.5">
+                {snapshot.lifetime.likes.toLocaleString()}
+              </div>
+            </div>
+            <div className="border border-sand3 p-3">
+              <div className="text-xs font-bold uppercase tracking-widest text-ink3">
+                Comments
+              </div>
+              <div className="font-serif font-black text-lg mt-0.5">
+                {snapshot.lifetime.comments.toLocaleString()}
+              </div>
+            </div>
+            <div className="border border-sand3 p-3">
+              <div className="text-xs font-bold uppercase tracking-widest text-ink3">
+                Shares
+              </div>
+              <div className="font-serif font-black text-lg mt-0.5">
+                {snapshot.lifetime.shares.toLocaleString()}
+              </div>
+            </div>
+          </div>
+        </>
+      )}
+    </section>
+  );
+}
+
+// LinkedIn's API exposes no impressions/engagement data for personal
+// profiles under any developer path (confirmed via Sprout Social's own
+// Profile Performance report) - this isn't a "not connected yet" state like
+// the other tabs, it's a platform-level dead end, so it gets a static
+// explanation instead of a fake data pipeline that would just error forever.
+function LinkedInTonyInfo() {
+  return (
+    <section>
+      <div className="card p-6">
+        <div className="flex items-start gap-2.5">
+          <FiAlertTriangle className="w-4 h-4 text-danger shrink-0 mt-0.5" />
+          <div className="text-sm">
+            <p className="font-semibold mb-1">
+              No API path exposes this data for personal profiles.
+            </p>
+            <p className="text-ink4">
+              Confirmed via Sprout Social's own Profile Performance report,
+              which showed follower/post counts but blank Impressions and
+              Engagements. LinkedIn's official API - through any vendor,
+              including a direct developer app - does not expose those
+              metrics for personal profiles. Only follower/connection count
+              and post count are obtainable at all, and even that requires
+              going through Sprout Social; a standalone LinkedIn developer app
+              gets nothing for a personal profile. This is a platform-level
+              restriction, not something more engineering effort fixes.
+            </p>
+          </div>
+        </div>
+      </div>
+
+      <div className="card px-4 py-4 mt-3">
+        <div className="slbl text-xs mb-2">RampRate's Company Page</div>
+        <p className="text-sm text-ink4">
+          Unlike Tony's personal profile, the Company Page is fully capable of
+          automation - see the "LinkedIn · RampRate" tab. It's not connected
+          yet because it needs one of two paths, and the choice (cost vs.
+          wait time) isn't a dev decision:
+        </p>
+        <ul className="text-sm text-ink4 mt-2 space-y-1.5 list-disc pl-5">
+          <li>
+            Apply for LinkedIn's Marketing Developer Platform at{" "}
+            <span className="font-mono text-ink3">developer.linkedin.com</span>{" "}
+            under RampRate's Company Page - free, but approval typically takes
+            1-4 months and isn't guaranteed.
+          </li>
+          <li>
+            Upgrade Sprout Social from Essentials ($99/mo) to Advanced
+            ($499/mo) to unlock their Public API - faster, and also the only
+            way to get Tony's limited follower/post-count numbers flowing
+            automatically.
+          </li>
+        </ul>
+      </div>
+    </section>
+  );
+}
+
 export default function AnalyticsPage() {
   const [tab, setTab] = useState<TabId>("overview");
   const [snapshots, setSnapshots] = useState<
@@ -719,6 +970,9 @@ export default function AnalyticsPage() {
   const [xSnapshots, setXSnapshots] = useState<
     Record<XAccountId, XSnapshotState | null>
   >({} as Record<XAccountId, XSnapshotState | null>);
+  const [linkedInSnapshots, setLinkedInSnapshots] = useState<
+    Record<LinkedInAccountId, LinkedInSnapshotState | null>
+  >({} as Record<LinkedInAccountId, LinkedInSnapshotState | null>);
   const [loading, setLoading] = useState(true);
   const { refreshKey } = useRefresh();
 
@@ -754,14 +1008,35 @@ export default function AnalyticsPage() {
     setLoading(false);
   }
 
+  async function fetchLinkedInAccounts(ids: LinkedInAccountId[]) {
+    setLoading(true);
+    const results = await Promise.all(
+      ids.map((id) =>
+        fetch(`/api/linkedin-analytics?account=${id}`, { cache: "no-store" })
+          .then((r) => r.json())
+          .catch(() => null),
+      ),
+    );
+    setLinkedInSnapshots((prev) => ({
+      ...prev,
+      ...Object.fromEntries(ids.map((id, i) => [id, results[i]])),
+    }));
+    setLoading(false);
+  }
+
   // Refetches whenever the header's global "Refresh" button bumps refreshKey
-  // (which also live-refreshes the underlying GA4/X caches - see Topbar.tsx).
+  // (which also live-refreshes the underlying GA4/X/LinkedIn caches - see Topbar.tsx).
   useEffect(() => {
     if (tab === "overview") {
       fetchSites(ANALYTICS_SITES.map((s) => s.id));
       fetchXAccounts(X_ACCOUNTS.map((a) => a.id));
+      fetchLinkedInAccounts(LINKEDIN_ACCOUNTS.map((a) => a.id));
     } else if (isXTab(tab)) {
       fetchXAccounts([xAccountFromTab(tab)]);
+    } else if (isLinkedInTab(tab)) {
+      fetchLinkedInAccounts([linkedInAccountFromTab(tab)]);
+    } else if (tab === "linkedin-tony") {
+      setLoading(false);
     } else {
       fetchSites([tab]);
     }
@@ -778,9 +1053,12 @@ export default function AnalyticsPage() {
           <OverviewPanel
             snapshots={snapshots}
             xSnapshots={xSnapshots}
+            linkedInSnapshots={linkedInSnapshots}
             loading={loading}
             onOpenSite={setTab}
             onOpenXAccount={(id) => setTab(`x-${id}`)}
+            onOpenLinkedIn={(id) => setTab(`li-${id}`)}
+            onOpenLinkedInTonyInfo={() => setTab("linkedin-tony")}
           />
         ) : isXTab(tab) ? (
           <XSection
@@ -788,6 +1066,14 @@ export default function AnalyticsPage() {
             snapshot={xSnapshots[xAccountFromTab(tab)] ?? null}
             loading={loading}
           />
+        ) : isLinkedInTab(tab) ? (
+          <LinkedInSection
+            color={LINKEDIN_BADGE_COLORS[linkedInAccountFromTab(tab)]}
+            snapshot={linkedInSnapshots[linkedInAccountFromTab(tab)] ?? null}
+            loading={loading}
+          />
+        ) : tab === "linkedin-tony" ? (
+          <LinkedInTonyInfo />
         ) : (
           <SiteSection
             color={BADGE_COLORS[tab]}

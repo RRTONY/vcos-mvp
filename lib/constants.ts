@@ -76,3 +76,20 @@ export const X_ACCOUNTS = [
 ] as const;
 
 export type XAccountId = (typeof X_ACCOUNTS)[number]["id"];
+
+export const CACHE_TTL_LINKEDIN_MS = 60 * 60 * 1000; // 1 hour - no per-request billing pressure like X, so no need to poll often
+
+// LinkedIn Company Page (RampRate only - LinkedIn's API exposes no
+// impressions/engagement data for personal profiles under any developer
+// path, confirmed via Sprout Social's own reporting, so there's no "tony"
+// entry here the way there is for X. See lib/linkedin-analytics.ts.
+export const LINKEDIN_ACCOUNTS = [
+  {
+    id: "ramprate",
+    label: "RampRate",
+    accessTokenEnvVar: "LINKEDIN_RAMPRATE_ACCESS_TOKEN",
+    organizationIdEnvVar: "LINKEDIN_RAMPRATE_ORGANIZATION_ID",
+  },
+] as const;
+
+export type LinkedInAccountId = (typeof LINKEDIN_ACCOUNTS)[number]["id"];

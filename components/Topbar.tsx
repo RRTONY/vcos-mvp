@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { useRefresh } from "./RefreshContext";
 import { useMe } from "@/hooks/useMe";
 import { RAMPRATE_LOGO_B64 } from "@/lib/logo";
-import { ANALYTICS_SITES, X_ACCOUNTS } from "@/lib/constants";
+import { ANALYTICS_SITES, X_ACCOUNTS, LINKEDIN_ACCOUNTS } from "@/lib/constants";
 import { FiRefreshCw } from "react-icons/fi";
 
 export default function Topbar() {
@@ -37,6 +37,9 @@ export default function Topbar() {
       ),
       ...X_ACCOUNTS.map((a) =>
         fetch(`/api/x-analytics?account=${a.id}`, { method: "POST" }),
+      ),
+      ...LINKEDIN_ACCOUNTS.map((a) =>
+        fetch(`/api/linkedin-analytics?account=${a.id}`, { method: "POST" }),
       ),
     ]);
     triggerRefresh();

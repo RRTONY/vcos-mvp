@@ -49,6 +49,8 @@
   #   X_RAMPRATE_ACCESS_TOKEN_SECRET  = ...
   #   X_TONY_ACCESS_TOKEN             = ... (OAuth 1.0a access token, via the PIN flow)
   #   X_TONY_ACCESS_TOKEN_SECRET      = ...
+  #   LINKEDIN_RAMPRATE_ACCESS_TOKEN       = ... (OAuth 2.0, Marketing Developer Platform app - not yet created)
+  #   LINKEDIN_RAMPRATE_ORGANIZATION_ID    = ... (numeric ID from the Company Page admin URL)
 
 # ── SCHEDULED FUNCTIONS (netlify/functions/) ───────────────────
 #   cron-refresh   · 0 14 * * *     daily cache refresh (ClickUp/Slack/WebWork/Fireflies), 7 AM PT
