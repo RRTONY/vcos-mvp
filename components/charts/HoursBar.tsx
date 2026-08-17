@@ -11,7 +11,7 @@ interface Props {
 
 // Shorten first name for X axis
 function firstName(username: string) {
-  return username.charAt(0).toUpperCase() + username.slice(1).split(/[\s.]/)[0].slice(1)
+  return username.charAt(0).toUpperCase() + username.slice(1).split(/[\s.]/)[0]
 }
 
 // Color tiers: dark→medium→light based on rank

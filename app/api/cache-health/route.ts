@@ -94,6 +94,20 @@ async function refreshSource(
     else if (source === "webwork") snapshot = await buildWebWorkSnapshot();
     else if (source === "fireflies") snapshot = await buildFirefliesSnapshot();
     else return { ok: true }; // systems-status has its own route
+
+    // A WebWork snapshot can come back "successful" at the HTTP level while
+    // some members' hours failed to fetch (see lib/webwork.ts `incomplete`).
+    // Caching that as a success would silently freeze stale/wrong per-member
+    // warning flags with no way to self-correct until the next full refresh -
+    // treat it as a failure instead, matching /api/webwork's POST handler.
+    if (source === "webwork" && (snapshot as { incomplete?: boolean }).incomplete) {
+      await recordFailure(
+        source,
+        "Partial fetch - some members' hours could not be retrieved from WebWork",
+      );
+      return { ok: false, error: "Partial fetch - some members' hours could not be retrieved" };
+    }
+
     await recordSuccess(source, snapshot);
     return { ok: true };
   } catch (err) {
