@@ -173,9 +173,20 @@ export async function POST(req: NextRequest) {
           const name = err instanceof Error ? err.name : typeof err;
           const msg = err instanceof Error ? err.message : String(err);
           const keyLen = `raw=${rawApiKey?.length ?? 0} trimmed=${apiKey?.length ?? 0}`;
+          // A bare 401 with no body is unusual for Anthropic's API (it
+          // normally includes a JSON error body) - more typical of an edge/
+          // gateway layer (e.g. Cloudflare) rejecting the request before it
+          // reaches Anthropic's application layer. requestID/headers reveal
+          // whether this actually reached Anthropic's servers at all.
+          const apiErr = err as {
+            requestID?: string;
+            headers?: { forEach?: (cb: (v: string, k: string) => void) => void };
+          };
+          const headerPairs: string[] = [];
+          apiErr.headers?.forEach?.((v, k) => headerPairs.push(`${k}=${v}`));
           controller.enqueue(
             enc.encode(
-              `\n\n[debug: ${name} status=${status} - ${msg} | key length ${keyLen}]`,
+              `\n\n[debug: ${name} status=${status} - ${msg} | key length ${keyLen} | requestID=${apiErr.requestID ?? "none"} | headers: ${headerPairs.join(", ") || "none"}]`,
             ),
           );
         }
