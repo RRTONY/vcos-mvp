@@ -63,7 +63,12 @@ export async function POST(req: NextRequest) {
   if (!role || !username)
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  const apiKey = process.env.ANTHROPIC_API_KEY_CHAT;
+  // .trim() guards against invisible trailing whitespace/newline in the
+  // stored env var - a common cause of a bare 401 from Anthropic that looks
+  // identical to an actually-wrong key, since the dashboard UI doesn't
+  // visually distinguish "abc123" from "abc123\n".
+  const rawApiKey = process.env.ANTHROPIC_API_KEY_CHAT;
+  const apiKey = rawApiKey?.trim();
   if (!apiKey)
     return NextResponse.json(
       { error: "ANTHROPIC_API_KEY_CHAT not configured" },
@@ -167,8 +172,11 @@ export async function POST(req: NextRequest) {
         if (isAdmin) {
           const name = err instanceof Error ? err.name : typeof err;
           const msg = err instanceof Error ? err.message : String(err);
+          const keyLen = `raw=${rawApiKey?.length ?? 0} trimmed=${apiKey?.length ?? 0}`;
           controller.enqueue(
-            enc.encode(`\n\n[debug: ${name} status=${status} - ${msg}]`),
+            enc.encode(
+              `\n\n[debug: ${name} status=${status} - ${msg} | key length ${keyLen}]`,
+            ),
           );
         }
         controller.close();
