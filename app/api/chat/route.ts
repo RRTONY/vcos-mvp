@@ -127,7 +127,16 @@ export async function POST(req: NextRequest) {
     },
   ];
 
-  const client = new Anthropic({ apiKey });
+  // Explicit no-store fetch - on Netlify, Next.js's patched global fetch()
+  // routes through its Data Cache (backed by Netlify Blobs), which the
+  // Anthropic SDK's internal fetch calls can get swept into unintentionally.
+  // That produced a bare 401 branded as coming from Netlify itself (no
+  // anthropic-request-id, "server: Netlify" header) rather than ever
+  // reaching api.anthropic.com - this bypasses that caching layer entirely.
+  const client = new Anthropic({
+    apiKey,
+    fetch: (url, init) => fetch(url, { ...init, cache: "no-store" }),
+  });
   const lastUser = messages[messages.length - 1];
 
   const stream = new ReadableStream<Uint8Array>({
