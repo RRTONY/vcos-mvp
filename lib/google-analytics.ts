@@ -129,6 +129,8 @@ export interface PageRow {
   title: string;
   pageviews: number;
   sessions: number;
+  eventCount: number;
+  activeUsers: number;
 }
 
 export interface BreakdownRow {
@@ -203,16 +205,26 @@ function toPageRows(report: RunReportResponse): PageRow[] {
     title: r.dimensionValues?.[1]?.value ?? "",
     pageviews: metric(r, 0),
     sessions: metric(r, 1),
+    eventCount: metric(r, 2),
+    activeUsers: metric(r, 3),
   }));
 }
 
+// Pulls every page GA4 has data for (capped at 200, ordered by views) rather
+// than just a top-10 slice, so the dashboard's searchable table and the AI
+// assistant can answer questions about any page, not only the biggest ones.
 async function topPagesLast7Days(propertyId: string): Promise<PageRow[]> {
   const report = await runReport(propertyId, {
     dateRanges: [{ startDate: "7daysAgo", endDate: "today" }],
     dimensions: [{ name: "pagePath" }, { name: "pageTitle" }],
-    metrics: [{ name: "screenPageViews" }, { name: "sessions" }],
+    metrics: [
+      { name: "screenPageViews" },
+      { name: "sessions" },
+      { name: "eventCount" },
+      { name: "activeUsers" },
+    ],
     orderBys: [{ metric: { metricName: "screenPageViews" }, desc: true }],
-    limit: 10,
+    limit: 200,
   });
   return toPageRows(report);
 }

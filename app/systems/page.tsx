@@ -18,6 +18,7 @@ import {
   FiSettings,
 } from "react-icons/fi";
 import SystemRow from "@/components/SystemRow";
+import Spinner from "@/components/Spinner";
 import TabBar from "@/components/TabBar";
 import KeysPanel from "@/app/settings/keys/page";
 import { useRefresh } from "@/components/RefreshContext";
@@ -309,15 +310,19 @@ export default function SystemsPage() {
                 disabled={refreshing !== null}
                 className="btn-secondary text-xs py-1 px-3 disabled:opacity-50"
               >
-                {refreshing === "all" ? "Refreshing…" : "↻ Refresh All"}
+                {refreshing === "all" ? (
+                  <Spinner size="w-3.5 h-3.5" />
+                ) : (
+                  "↻ Refresh All"
+                )}
               </button>
             )}
           </div>
           <div className="card mb-6">
             <div className="card-body p-0 px-4 divide-y divide-sand3">
               {cacheHealth.length === 0 ? (
-                <div className="py-3 text-sm text-ink4 animate-pulse">
-                  Loading cache health…
+                <div className="py-3 text-sm text-ink4">
+                  <Spinner />
                 </div>
               ) : (
                 cacheHealth.map((row) => {
@@ -365,17 +370,19 @@ export default function SystemsPage() {
                           {row.last_error.length > 60 ? "…" : ""}
                         </span>
                       )}
-                      {isAdmin &&
-                        isProblematic &&
-                        row.source !== "systems-status" && (
-                          <button
-                            onClick={() => handleRefresh(row.source)}
-                            disabled={refreshing !== null}
-                            className="ml-auto text-xs border border-sand3 px-2 py-0.5 hover:border-ink3 hover:text-ink transition-colors disabled:opacity-40"
-                          >
-                            {refreshing === row.source ? "…" : "↻"}
-                          </button>
-                        )}
+                      {isAdmin && isProblematic && (
+                        <button
+                          onClick={() => handleRefresh(row.source)}
+                          disabled={refreshing !== null}
+                          className="ml-auto text-xs border border-sand3 px-2 py-0.5 hover:border-ink3 hover:text-ink transition-colors disabled:opacity-40"
+                        >
+                          {refreshing === row.source ? (
+                            <Spinner size="w-3 h-3" />
+                          ) : (
+                            "↻"
+                          )}
+                        </button>
+                      )}
                     </div>
                   );
                 })

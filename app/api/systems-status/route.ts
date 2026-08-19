@@ -1,89 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
-import { authTest } from "@/lib/slack";
-import { pingUser } from "@/lib/clickup";
-import { pingFireflies } from "@/lib/fireflies";
-import { getCachedSWR, recordSuccess } from "@/lib/api-cache";
+import { getCachedSWR, recordSuccess, recordFailure } from "@/lib/api-cache";
+import { buildSystemsStatusSnapshot, type SystemResult } from "@/lib/systems-status";
 import { getSupabase } from "@/lib/supabase";
 import { COOKIE_NAME, verifySession } from "@/lib/auth";
 import { CACHE_TTL_SYSTEMS_MS } from "@/lib/constants";
 
 type Status = "green" | "amber" | "red";
-
-interface SystemResult {
-  system: string;
-  status: Status;
-  detail: string;
-  manual?: boolean;
-  updatedBy?: string;
-  updatedAt?: string;
-}
-
-// Systems checked via live API call
-async function checkSlack(): Promise<SystemResult> {
-  if (!process.env.SLACK_BOT_TOKEN)
-    return { system: "Slack", status: "amber", detail: "Token not configured" };
-  try {
-    const d = await authTest();
-    return {
-      system: "Slack",
-      status: d.ok ? "green" : "red",
-      detail: d.ok ? `Connected as ${d.user}` : (d.error ?? "Auth failed"),
-    };
-  } catch (e) {
-    return {
-      system: "Slack",
-      status: "red",
-      detail: e instanceof Error ? e.message : "Error",
-    };
-  }
-}
-
-async function checkClickUp(): Promise<SystemResult> {
-  if (!process.env.CLICKUP_API_KEY)
-    return {
-      system: "ClickUp",
-      status: "amber",
-      detail: "API key not configured",
-    };
-  try {
-    const d = await pingUser();
-    return {
-      system: "ClickUp",
-      status: d.user ? "green" : "red",
-      detail: d.user ? `Authed as ${d.user.username}` : "Auth failed",
-    };
-  } catch (e) {
-    return {
-      system: "ClickUp",
-      status: "red",
-      detail: e instanceof Error ? e.message : "Error",
-    };
-  }
-}
-
-async function checkFireflies(): Promise<SystemResult> {
-  if (!process.env.FIREFLIES_API_KEY)
-    return {
-      system: "Fireflies",
-      status: "amber",
-      detail: "API key not configured",
-    };
-  try {
-    const d = await pingFireflies();
-    const ok = d.data?.user;
-    return {
-      system: "Fireflies",
-      status: ok ? "green" : "amber",
-      detail: ok ? `Connected as ${d.data.user.name}` : "Auth issue",
-    };
-  } catch (e) {
-    return {
-      system: "Fireflies",
-      status: "red",
-      detail: e instanceof Error ? e.message : "Error",
-    };
-  }
-}
 
 // Systems that are manually managed - stored in Supabase system_statuses table
 const MANUAL_SYSTEM_KEYS = [
@@ -141,25 +63,9 @@ export async function GET() {
   if (liveCache.data && !liveCache.stale) {
     liveResults = liveCache.data.systems.filter((s) => !s.manual);
   } else {
-    const [slack, clickup, fireflies] = await Promise.all([
-      checkSlack(),
-      checkClickUp(),
-      checkFireflies(),
-    ]);
-    liveResults = [
-      {
-        system: "Netlify",
-        status: "green",
-        detail: "Functions running normally",
-      },
-      slack,
-      clickup,
-      fireflies,
-    ];
-    await recordSuccess("systems-status", {
-      systems: liveResults,
-      timestamp: new Date().toISOString(),
-    });
+    const snapshot = await buildSystemsStatusSnapshot();
+    liveResults = snapshot.systems;
+    await recordSuccess("systems-status", snapshot);
   }
 
   const systems: SystemResult[] = [
@@ -168,6 +74,30 @@ export async function GET() {
   ];
 
   return NextResponse.json({ systems, timestamp: new Date().toISOString() });
+}
+
+// POST - force a live refresh (cron, or cache-health's "Refresh" button).
+// Previously nothing ever called this: the daily cron didn't include this
+// source and cache-health's refresh treated it as a no-op ("has its own
+// route"), so once nobody happened to load /systems while its 5-min cache
+// was stale, the cached snapshot froze indefinitely and the health panel
+// showed it as permanently expired.
+export async function POST(req: NextRequest) {
+  const role = req.headers.get("x-role");
+  const secret = req.headers.get("x-cron-secret");
+  const isScheduled = secret === process.env.CRON_SECRET;
+  if (!isScheduled && !role)
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+  try {
+    const snapshot = await buildSystemsStatusSnapshot();
+    await recordSuccess("systems-status", snapshot);
+    return NextResponse.json({ ok: true, ...snapshot });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : "Unknown error";
+    await recordFailure("systems-status", msg);
+    return NextResponse.json({ ok: false, error: msg });
+  }
 }
 
 // PATCH - admin updates a manual system status

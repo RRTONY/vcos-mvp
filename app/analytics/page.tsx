@@ -5,6 +5,7 @@ import { FiAlertTriangle, FiTrendingUp } from "react-icons/fi";
 import StaleBadge from "@/components/StaleBadge";
 import Skeleton from "@/components/Skeleton";
 import TabBar from "@/components/TabBar";
+import { PagesTable } from "@/components/PagesTable";
 import { useRefresh } from "@/components/RefreshContext";
 import {
   ANALYTICS_SITES,
@@ -119,61 +120,6 @@ function pctDelta(
     label: `${pct >= 0 ? "▲" : "▼"} ${Math.abs(pct)}% vs yesterday`,
     up: pct >= 0,
   };
-}
-
-function PageTable({
-  rows,
-  emptyLabel,
-  rank,
-}: {
-  rows: PageRow[];
-  emptyLabel: string;
-  rank?: boolean;
-}) {
-  if (rows.length === 0) {
-    return (
-      <div className="flex flex-col items-center justify-center text-center gap-2 py-8">
-        <p className="text-xs text-ink4">{emptyLabel}</p>
-      </div>
-    );
-  }
-  return (
-    <div className="divide-y divide-sand3 overflow-hidden">
-      {rows.map((r, i) => (
-        <div
-          key={r.path}
-          className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1 sm:gap-3 py-3 overflow-hidden"
-        >
-          <div className="flex items-start gap-2.5 min-w-0">
-            {rank && (
-              <span className="w-5 h-5 rounded-full bg-sand2 text-ink3 text-[11px] font-bold flex items-center justify-center flex-shrink-0 mt-0.5">
-                {i + 1}
-              </span>
-            )}
-            <div className="min-w-0">
-              <div
-                className="text-sm font-semibold truncate"
-                title={r.title || r.path}
-              >
-                {r.title || r.path}
-              </div>
-              <div className="text-xs text-ink4 truncate">{r.path}</div>
-            </div>
-          </div>
-          <div
-            className={`flex items-center flex-wrap gap-1.5 flex-shrink-0 ${rank ? "pl-7 sm:pl-0" : ""}`}
-          >
-            <span className="badge-accent whitespace-nowrap">
-              {r.pageviews.toLocaleString()} views
-            </span>
-            <span className="badge whitespace-nowrap">
-              {r.sessions.toLocaleString()} sessions
-            </span>
-          </div>
-        </div>
-      ))}
-    </div>
-  );
 }
 
 function BreakdownList({
@@ -297,7 +243,7 @@ function OverviewPanel({
                     {snap.today.sessions.toLocaleString()}
                   </div>
                   <div className="text-xs text-ink4">
-                    sessions today · {snap.today.pageviews.toLocaleString()}{" "}
+                    visits today · {snap.today.pageviews.toLocaleString()}{" "}
                     views
                   </div>
                   {sessionsDelta && (
@@ -532,7 +478,7 @@ function SiteSection({
           <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mb-3">
             <div className="border border-sand3 p-3">
               <div className="text-xs font-bold uppercase tracking-widest text-ink3">
-                Sessions (today)
+                Visits (today)
               </div>
               <div className="font-serif font-black text-2xl mt-0.5">
                 {snapshot.today.sessions.toLocaleString()}
@@ -562,7 +508,7 @@ function SiteSection({
             </div>
             <div className="border border-sand3 p-3">
               <div className="text-xs font-bold uppercase tracking-widest text-ink3">
-                Avg. session duration
+                Avg. time on site
               </div>
               <div className="font-serif font-black text-2xl mt-0.5">
                 {fmtDuration(snapshot.today.avgSessionDurationSec)}
@@ -570,10 +516,10 @@ function SiteSection({
             </div>
           </div>
 
-          <div className="card px-4">
+          <div className="card px-4 pb-4">
             <div className="slbl text-xs flex items-center gap-1.5">
               <FiTrendingUp className="w-3.5 h-3.5 text-ink4" />
-              Best Performing Pages (7d)
+              Pages
             </div>
 
             {snapshot.notFoundPages.length > 0 && (
@@ -588,11 +534,7 @@ function SiteSection({
               </div>
             )}
 
-            <PageTable
-              rows={snapshot.topPages}
-              emptyLabel="No page data yet."
-              rank
-            />
+            <PagesTable rows={snapshot.topPages} />
           </div>
 
           {/* Audience - the "who's visiting" breakdown, last 28 days */}
@@ -675,7 +617,7 @@ function SiteSection({
           )}
 
           <div className="card px-4 pt-4 pb-2 mt-6">
-            <div className="slbl mb-0 text-xs">Sessions - Last 8 Days</div>
+            <div className="slbl mb-0 text-xs">Visits</div>
             <AnalyticsSparkline data={snapshot.trend} color={color} />
           </div>
         </>

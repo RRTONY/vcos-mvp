@@ -282,7 +282,7 @@ export async function buildChatContext(
     lines.push("");
   }
 
-  // ── Website analytics (GA4) - visible to everyone, not role-scoped ──
+  // ── Website analytics (GA4) - summary for everyone, per-page/404 detail admin-only ──
   const analyticsSnapshots = await Promise.all(
     ANALYTICS_SITES.map((s) =>
       getCachedSWR<AnalyticsSnapshot>(`analytics-${s.id}`)
@@ -310,19 +310,27 @@ export async function buildChatContext(
       lines.push(
         `  - Yesterday: ${data.yesterday.sessions} sessions, ${data.yesterday.pageviews} pageviews`,
       );
-      if (data.topPages.length) {
+      if (isAdmin) {
+        if (data.topPages.length) {
+          // Capped at 30 (of up to 200 fetched) to keep this from bloating
+          // every chat turn's prompt - the full list is in the dashboard's
+          // searchable table for anything ranked lower than this.
+          lines.push(
+            `  - Top pages (7d, sorted by views): ${data.topPages
+              .slice(0, 30)
+              .map(
+                (p) =>
+                  `${p.title || p.path} [${p.path}] (${p.pageviews} views, ${p.sessions} sessions, ${p.eventCount ?? 0} events, ${p.activeUsers ?? 0} active users)`,
+              )
+              .join("; ")}`,
+          );
+        }
         lines.push(
-          `  - Best performing pages (7d): ${data.topPages
-            .slice(0, 5)
-            .map((p) => `${p.title || p.path} (${p.pageviews} views)`)
-            .join("; ")}`,
+          data.notFoundPages.length
+            ? `  - ⚠️ Pages erroring (404/not-found, 7d): ${data.notFoundPages.map((p) => p.path).join(", ")}`
+            : `  - No 404/not-found pages detected this week.`,
         );
       }
-      lines.push(
-        data.notFoundPages.length
-          ? `  - ⚠️ Pages erroring (404/not-found, 7d): ${data.notFoundPages.map((p) => p.path).join(", ")}`
-          : `  - No 404/not-found pages detected this week.`,
-      );
       // Day-by-day breakdown so a question about a specific date ("how many
       // sessions on Aug 5?") can be answered directly instead of only the
       // today/yesterday/7d/28d rollups above. audience.trend covers the most

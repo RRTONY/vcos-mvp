@@ -53,11 +53,12 @@
   #   LINKEDIN_RAMPRATE_ORGANIZATION_ID    = ... (numeric ID from the Company Page admin URL)
 
 # ── SCHEDULED FUNCTIONS (netlify/functions/) ───────────────────
-#   cron-refresh   · 0 14 * * *     daily cache refresh (ClickUp/Slack/WebWork/Fireflies), 7 AM PT
-#   daily-report   · 0 14 * * *     daily standup compile
-#   invoice-sync   · (see file)     ClickUp → invoices
-#   morning-brief  · 15 14 * * 1-5  VCoS-AI /gm brief → Slack, weekday mornings (7:15 AM PDT)
-#   x-refresh      · */20 * * * *   X (Twitter) cache refresh, both accounts
+#   cron-refresh       · 0 14 * * *     daily cache refresh (ClickUp/Slack/WebWork/Fireflies), 7 AM PT
+#   daily-report       · 0 14 * * *     daily standup compile
+#   invoice-sync       · (see file)     ClickUp → invoices
+#   morning-brief      · 15 14 * * 1-5  VCoS-AI /gm brief → Slack, weekday mornings (7:15 AM PDT)
+#   x-refresh          · */20 * * * *   X (Twitter) cache refresh, both accounts
+#   analytics-refresh  · */15 * * * *   GA4 cache refresh, all 3 sites (ramprate/impactsoul/tonygreenberg)
 
 # ── NEXT.JS PLUGIN ─────────────────────────────────────────────
 [[plugins]]

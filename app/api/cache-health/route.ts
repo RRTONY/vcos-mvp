@@ -5,6 +5,7 @@ import { buildSlackSnapshot } from "@/lib/slack";
 import { buildClickUpSnapshot } from "@/lib/clickup";
 import { buildWebWorkSnapshot } from "@/lib/webwork";
 import { buildFirefliesSnapshot } from "@/lib/fireflies";
+import { buildSystemsStatusSnapshot } from "@/lib/systems-status";
 import { recordSuccess, recordFailure } from "@/lib/api-cache";
 
 const STALE_MINUTES = 60;
@@ -93,7 +94,8 @@ async function refreshSource(
     else if (source === "clickup") snapshot = await buildClickUpSnapshot();
     else if (source === "webwork") snapshot = await buildWebWorkSnapshot();
     else if (source === "fireflies") snapshot = await buildFirefliesSnapshot();
-    else return { ok: true }; // systems-status has its own route
+    else if (source === "systems-status")
+      snapshot = await buildSystemsStatusSnapshot();
 
     // A WebWork snapshot can come back "successful" at the HTTP level while
     // some members' hours failed to fetch (see lib/webwork.ts `incomplete`).
@@ -132,7 +134,13 @@ export async function POST(req: NextRequest) {
   const { source } = body as { source?: string };
 
   if (source === "all") {
-    const targets: SourceKey[] = ["slack", "clickup", "webwork", "fireflies"];
+    const targets: SourceKey[] = [
+      "slack",
+      "clickup",
+      "webwork",
+      "fireflies",
+      "systems-status",
+    ];
     const results = await Promise.allSettled(
       targets.map((s) => refreshSource(s)),
     );

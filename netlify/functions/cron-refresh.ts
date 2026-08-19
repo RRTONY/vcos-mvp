@@ -14,6 +14,7 @@ const SOURCES = [
   "slack-messages",
   "webwork",
   "fireflies-meetings",
+  "systems-status",
 ] as const;
 
 export default async () => {
