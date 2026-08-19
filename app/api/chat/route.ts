@@ -212,9 +212,26 @@ export async function POST(req: NextRequest) {
           ]
             .map((k) => `${k}=${process.env[k] ?? "unset"}`)
             .join(", ");
+
+          // Decisive test: does ANY outbound HTTPS call from this function
+          // fail the same way, or is it specific to api.anthropic.com? If a
+          // totally unrelated, unauthenticated API also comes back branded
+          // as Netlify, this is a blanket networking/DNS issue for the whole
+          // function, not anything specific to Anthropic or this key.
+          let sideTest = "not run";
+          try {
+            const dns = await import("node:dns/promises");
+            const addrs = await dns.lookup("api.anthropic.com", { all: true });
+            const r = await undiciFetch("https://api.github.com/zen");
+            const rServer = r.headers.get("server");
+            sideTest = `dns=${JSON.stringify(addrs)} | github.com status=${r.status} server=${rServer}`;
+          } catch (sideErr) {
+            sideTest = `side-test failed: ${sideErr instanceof Error ? sideErr.message : String(sideErr)}`;
+          }
+
           controller.enqueue(
             enc.encode(
-              `\n\n[debug: ${name} status=${status} - ${msg} | key length ${keyLen} | requestID=${apiErr.requestID ?? "none"} | headers: ${headerPairs.join(", ") || "none"} | env: ${proxyVars}]`,
+              `\n\n[debug: ${name} status=${status} - ${msg} | key length ${keyLen} | requestID=${apiErr.requestID ?? "none"} | headers: ${headerPairs.join(", ") || "none"} | env: ${proxyVars} | side-test: ${sideTest}]`,
             ),
           );
         }
