@@ -194,9 +194,27 @@ export async function POST(req: NextRequest) {
           };
           const headerPairs: string[] = [];
           apiErr.headers?.forEach?.((v, k) => headerPairs.push(`${k}=${v}`));
+          // Both the platform fetch and an independent undici client hit the
+          // identical failure - that only makes sense if something below the
+          // JS HTTP-client layer is redirecting outbound HTTPS traffic
+          // (e.g. an HTTPS_PROXY-style env var), since both would otherwise
+          // open their own independent connections. Check for that directly.
+          const proxyVars = [
+            "HTTPS_PROXY",
+            "https_proxy",
+            "HTTP_PROXY",
+            "http_proxy",
+            "NO_PROXY",
+            "no_proxy",
+            "NODE_OPTIONS",
+            "AWS_LAMBDA_FUNCTION_NAME",
+            "NETLIFY",
+          ]
+            .map((k) => `${k}=${process.env[k] ?? "unset"}`)
+            .join(", ");
           controller.enqueue(
             enc.encode(
-              `\n\n[debug: ${name} status=${status} - ${msg} | key length ${keyLen} | requestID=${apiErr.requestID ?? "none"} | headers: ${headerPairs.join(", ") || "none"}]`,
+              `\n\n[debug: ${name} status=${status} - ${msg} | key length ${keyLen} | requestID=${apiErr.requestID ?? "none"} | headers: ${headerPairs.join(", ") || "none"} | env: ${proxyVars}]`,
             ),
           );
         }
