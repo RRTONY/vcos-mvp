@@ -2,6 +2,7 @@
 // operating identity) + a live, role-scoped snapshot of VCOS data.
 import { NextRequest, NextResponse } from "next/server";
 import Anthropic from "@anthropic-ai/sdk";
+import { fetch as undiciFetch } from "undici";
 import { SYSTEM_STATIC, buildLiveBlock } from "@/lib/vcos-brain";
 import { buildChatContext } from "@/lib/chat-context";
 import {
@@ -127,15 +128,15 @@ export async function POST(req: NextRequest) {
     },
   ];
 
-  // Explicit no-store fetch - on Netlify, Next.js's patched global fetch()
-  // routes through its Data Cache (backed by Netlify Blobs), which the
-  // Anthropic SDK's internal fetch calls can get swept into unintentionally.
-  // That produced a bare 401 branded as coming from Netlify itself (no
-  // anthropic-request-id, "server: Netlify" header) rather than ever
-  // reaching api.anthropic.com - this bypasses that caching layer entirely.
+  // Passing { cache: "no-store" } to the global fetch didn't help - the 401
+  // came back branded as Netlify's own response (server: Netlify, no
+  // anthropic-request-id), meaning something replaces globalThis.fetch
+  // itself in Netlify's Next.js runtime, not just its cache behavior. Using
+  // undici's own fetch (a separate HTTP client, not routed through whatever
+  // global fetch Netlify's adapter installs) bypasses that layer entirely.
   const client = new Anthropic({
     apiKey,
-    fetch: (url, init) => fetch(url, { ...init, cache: "no-store" }),
+    fetch: undiciFetch as unknown as typeof fetch,
   });
   const lastUser = messages[messages.length - 1];
 
