@@ -161,6 +161,16 @@ export async function POST(req: NextRequest) {
             ? CONTACT_MSG
             : "VCoS-AI is temporarily unavailable. Please try again in a moment.";
         controller.enqueue(enc.encode(`\n\n⚠️ ${friendly}`));
+        // TEMPORARY: surface the real error to admins only, so this can be
+        // diagnosed without Netlify log access. Remove once the root cause
+        // (production-only Anthropic call failure) is found and fixed.
+        if (isAdmin) {
+          const name = err instanceof Error ? err.name : typeof err;
+          const msg = err instanceof Error ? err.message : String(err);
+          controller.enqueue(
+            enc.encode(`\n\n[debug: ${name} status=${status} - ${msg}]`),
+          );
+        }
         controller.close();
       }
 
