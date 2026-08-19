@@ -229,9 +229,31 @@ export async function POST(req: NextRequest) {
             sideTest = `side-test failed: ${sideErr instanceof Error ? sideErr.message : String(sideErr)}`;
           }
 
+          // GitHub (plain, buffered GET) succeeded while Anthropic's
+          // streaming call failed - the one real difference is that
+          // messages.stream() expects a long-lived SSE response, a known
+          // weak spot for traditional Lambda-backed functions. Isolate that:
+          // try the SAME Anthropic endpoint, same key, but non-streaming.
+          let nonStreamTest = "not run";
+          try {
+            const nonStreamClient = new Anthropic({ apiKey, fetch: undiciFetch as unknown as typeof fetch });
+            const resp = await nonStreamClient.messages.create({
+              model: MODEL,
+              max_tokens: 10,
+              messages: [{ role: "user", content: "say hi" }],
+            });
+            nonStreamTest = `SUCCESS - ${resp.content[0]?.type === "text" ? resp.content[0].text : "(non-text)"}`;
+          } catch (nsErr) {
+            const nsStatus =
+              nsErr instanceof Error && "status" in nsErr
+                ? (nsErr as { status: number }).status
+                : 0;
+            nonStreamTest = `FAILED status=${nsStatus} - ${nsErr instanceof Error ? nsErr.message : String(nsErr)}`;
+          }
+
           controller.enqueue(
             enc.encode(
-              `\n\n[debug: ${name} status=${status} - ${msg} | key length ${keyLen} | requestID=${apiErr.requestID ?? "none"} | headers: ${headerPairs.join(", ") || "none"} | env: ${proxyVars} | side-test: ${sideTest}]`,
+              `\n\n[debug: ${name} status=${status} - ${msg} | key length ${keyLen} | requestID=${apiErr.requestID ?? "none"} | headers: ${headerPairs.join(", ") || "none"} | env: ${proxyVars} | side-test: ${sideTest} | non-stream test: ${nonStreamTest}]`,
             ),
           );
         }
