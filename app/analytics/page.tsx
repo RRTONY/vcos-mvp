@@ -47,41 +47,42 @@ const LINKEDIN_BADGE_COLORS: Record<LinkedInAccountId, string> = {
   ramprate: "#0A66C2",
 };
 
-// X account tabs are namespaced "x-<accountId>", LinkedIn "li-<accountId>",
-// so neither collides with website AnalyticsSiteId tabs (both happen to use
-// "ramprate" as an id). "linkedin-tony" is a fixed, non-parameterized tab -
-// there's no LinkedInAccountId for Tony since his personal profile has no
-// working data pipeline (see lib/linkedin-analytics.ts's comment on why).
-type XTabId = `x-${XAccountId}`;
-type LinkedInTabId = `li-${LinkedInAccountId}`;
-type TabId = "overview" | AnalyticsSiteId | XTabId | LinkedInTabId | "linkedin-tony";
-
-function isXTab(tab: TabId): tab is XTabId {
-  return tab.startsWith("x-");
-}
-function xAccountFromTab(tab: XTabId): XAccountId {
-  return tab.slice(2) as XAccountId;
-}
-function isLinkedInTab(tab: TabId): tab is LinkedInTabId {
-  return tab.startsWith("li-");
-}
-function linkedInAccountFromTab(tab: LinkedInTabId): LinkedInAccountId {
-  return tab.slice(3) as LinkedInAccountId;
-}
+// One top-level tab per brand; Website/X/LinkedIn live as sub-tabs inside it
+// instead of being separate top-level tabs, so someone unfamiliar with the
+// dashboard doesn't need to already know "X · RampRate" is part of RampRate.
+type TabId = "overview" | AnalyticsSiteId;
 
 const TABS: { id: TabId; label: string }[] = [
   { id: "overview", label: "Dashboard" },
   ...ANALYTICS_SITES.map((s) => ({ id: s.id as TabId, label: s.label })),
-  ...X_ACCOUNTS.map((a) => ({
-    id: `x-${a.id}` as TabId,
-    label: `X · ${a.label}`,
-  })),
-  ...LINKEDIN_ACCOUNTS.map((a) => ({
-    id: `li-${a.id}` as TabId,
-    label: `LinkedIn · ${a.label}`,
-  })),
-  { id: "linkedin-tony" as TabId, label: "LinkedIn · Tony Greenberg" },
 ];
+
+type SubTabId = "website" | "x" | "linkedin";
+
+// Which X/LinkedIn account (if any) belongs to each brand - and the reverse,
+// for routing a Dashboard-card click on an X/LinkedIn account to the right
+// brand tab. Account ids don't always match the site id (X's Tony Greenberg
+// account is "tony", not "tonygreenberg").
+const SITE_TO_X_ACCOUNT: Partial<Record<AnalyticsSiteId, XAccountId>> = {
+  ramprate: "ramprate",
+  tonygreenberg: "tony",
+};
+const SITE_TO_LINKEDIN_ACCOUNT: Partial<Record<AnalyticsSiteId, LinkedInAccountId>> = {
+  ramprate: "ramprate",
+};
+const X_ACCOUNT_TO_SITE: Record<XAccountId, AnalyticsSiteId> = {
+  ramprate: "ramprate",
+  tony: "tonygreenberg",
+};
+const LINKEDIN_ACCOUNT_TO_SITE: Record<LinkedInAccountId, AnalyticsSiteId> = {
+  ramprate: "ramprate",
+};
+// Tony Greenberg's personal LinkedIn has no working data pipeline (see
+// lib/linkedin-analytics.ts) - his LinkedIn sub-tab shows a static
+// explanation instead of a live snapshot.
+const LINKEDIN_INFO_ONLY_SITES: Partial<Record<AnalyticsSiteId, boolean>> = {
+  tonygreenberg: true,
+};
 
 type SnapshotState = AnalyticsSnapshot & {
   error?: string | null;
@@ -173,19 +174,13 @@ function OverviewPanel({
   xSnapshots,
   linkedInSnapshots,
   loading,
-  onOpenSite,
-  onOpenXAccount,
-  onOpenLinkedIn,
-  onOpenLinkedInTonyInfo,
+  onOpenBrand,
 }: {
   snapshots: Record<AnalyticsSiteId, SnapshotState | null>;
   xSnapshots: Record<XAccountId, XSnapshotState | null>;
   linkedInSnapshots: Record<LinkedInAccountId, LinkedInSnapshotState | null>;
   loading: boolean;
-  onOpenSite: (site: AnalyticsSiteId) => void;
-  onOpenXAccount: (account: XAccountId) => void;
-  onOpenLinkedIn: (account: LinkedInAccountId) => void;
-  onOpenLinkedInTonyInfo: () => void;
+  onOpenBrand: (site: AnalyticsSiteId, subTab: SubTabId) => void;
 }) {
   const errorSites = ANALYTICS_SITES.filter(
     (s) => (snapshots[s.id]?.notFoundPages.length ?? 0) > 0,
@@ -216,7 +211,7 @@ function OverviewPanel({
           return (
             <button
               key={s.id}
-              onClick={() => onOpenSite(s.id)}
+              onClick={() => onOpenBrand(s.id, "website")}
               className="card text-left px-4 py-3 hover:border-accent hover:shadow-card-md transition-all"
             >
               <div className="flex items-center gap-2 mb-1">
@@ -272,7 +267,7 @@ function OverviewPanel({
           return (
             <button
               key={a.id}
-              onClick={() => onOpenXAccount(a.id)}
+              onClick={() => onOpenBrand(X_ACCOUNT_TO_SITE[a.id], "x")}
               className="card text-left px-4 py-3 hover:border-accent hover:shadow-card-md transition-all"
             >
               <div className="flex items-center gap-2 mb-1">
@@ -316,7 +311,7 @@ function OverviewPanel({
           return (
             <button
               key={a.id}
-              onClick={() => onOpenLinkedIn(a.id)}
+              onClick={() => onOpenBrand(LINKEDIN_ACCOUNT_TO_SITE[a.id], "linkedin")}
               className="card text-left px-4 py-3 hover:border-accent hover:shadow-card-md transition-all"
             >
               <div className="flex items-center gap-2 mb-1">
@@ -352,7 +347,7 @@ function OverviewPanel({
           );
         })}
         <button
-          onClick={onOpenLinkedInTonyInfo}
+          onClick={() => onOpenBrand("tonygreenberg", "linkedin")}
           className="card text-left px-4 py-3 hover:border-accent hover:shadow-card-md transition-all"
         >
           <div className="flex items-center gap-2 mb-1">
@@ -904,8 +899,75 @@ function LinkedInTonyInfo() {
   );
 }
 
+// One brand's whole picture - Website always present, X/LinkedIn sub-tabs
+// only shown when that brand actually has an account, so RampRate gets all
+// three but ImpactSoul (no social pipeline yet) only ever shows Website.
+function BrandSection({
+  site,
+  subTab,
+  onSubTabChange,
+  snapshot,
+  xSnapshot,
+  linkedInSnapshot,
+  loading,
+}: {
+  site: AnalyticsSiteId;
+  subTab: SubTabId;
+  onSubTabChange: (t: SubTabId) => void;
+  snapshot: SnapshotState | null;
+  xSnapshot: XSnapshotState | null;
+  linkedInSnapshot: LinkedInSnapshotState | null;
+  loading: boolean;
+}) {
+  const xAccount = SITE_TO_X_ACCOUNT[site];
+  const linkedInAccount = SITE_TO_LINKEDIN_ACCOUNT[site];
+  const linkedInInfoOnly = LINKEDIN_INFO_ONLY_SITES[site];
+
+  const subTabs: { id: SubTabId; label: string }[] = [
+    { id: "website", label: "Website" },
+    ...(xAccount ? [{ id: "x" as SubTabId, label: "X (Twitter)" }] : []),
+    ...(linkedInAccount || linkedInInfoOnly
+      ? [{ id: "linkedin" as SubTabId, label: "LinkedIn" }]
+      : []),
+  ];
+
+  return (
+    <section>
+      {subTabs.length > 1 && (
+        <div className="mb-4">
+          <TabBar tabs={subTabs} active={subTab} onChange={onSubTabChange} />
+        </div>
+      )}
+
+      {subTab === "website" && (
+        <SiteSection color={BADGE_COLORS[site]} snapshot={snapshot} loading={loading} />
+      )}
+      {subTab === "x" && xAccount && (
+        <XSection
+          color={X_BADGE_COLORS[xAccount]}
+          snapshot={xSnapshot}
+          loading={loading}
+        />
+      )}
+      {subTab === "linkedin" &&
+        (linkedInInfoOnly ? (
+          <LinkedInTonyInfo />
+        ) : (
+          linkedInAccount && (
+            <LinkedInSection
+              color={LINKEDIN_BADGE_COLORS[linkedInAccount]}
+              snapshot={linkedInSnapshot}
+              loading={loading}
+            />
+          )
+        ))}
+    </section>
+  );
+}
+
 export default function AnalyticsPage() {
   const [tab, setTab] = useState<TabId>("overview");
+  const [subTab, setSubTab] = useState<SubTabId>("website");
   const [snapshots, setSnapshots] = useState<
     Record<AnalyticsSiteId, SnapshotState | null>
   >({} as Record<AnalyticsSiteId, SnapshotState | null>);
@@ -917,6 +979,11 @@ export default function AnalyticsPage() {
   >({} as Record<LinkedInAccountId, LinkedInSnapshotState | null>);
   const [loading, setLoading] = useState(true);
   const { refreshKey } = useRefresh();
+
+  function openBrand(site: AnalyticsSiteId, sub: SubTabId) {
+    setTab(site);
+    setSubTab(sub);
+  }
 
   async function fetchSites(ids: AnalyticsSiteId[]) {
     setLoading(true);
@@ -967,27 +1034,35 @@ export default function AnalyticsPage() {
   }
 
   // Refetches whenever the header's global "Refresh" button bumps refreshKey
-  // (which also live-refreshes the underlying GA4/X/LinkedIn caches - see Topbar.tsx).
+  // (which also live-refreshes the underlying GA4/X/LinkedIn caches - see
+  // Topbar.tsx). A brand tab loads Website + its X/LinkedIn accounts (if any)
+  // together up front, so switching sub-tabs inside it is instant - no extra
+  // network round trip per sub-tab click.
   useEffect(() => {
     if (tab === "overview") {
       fetchSites(ANALYTICS_SITES.map((s) => s.id));
       fetchXAccounts(X_ACCOUNTS.map((a) => a.id));
       fetchLinkedInAccounts(LINKEDIN_ACCOUNTS.map((a) => a.id));
-    } else if (isXTab(tab)) {
-      fetchXAccounts([xAccountFromTab(tab)]);
-    } else if (isLinkedInTab(tab)) {
-      fetchLinkedInAccounts([linkedInAccountFromTab(tab)]);
-    } else if (tab === "linkedin-tony") {
-      setLoading(false);
-    } else {
-      fetchSites([tab]);
+      return;
     }
+    fetchSites([tab]);
+    const xAccount = SITE_TO_X_ACCOUNT[tab];
+    if (xAccount) fetchXAccounts([xAccount]);
+    const linkedInAccount = SITE_TO_LINKEDIN_ACCOUNT[tab];
+    if (linkedInAccount) fetchLinkedInAccounts([linkedInAccount]);
   }, [tab, refreshKey]);
 
   return (
     <div>
       <div className="mt-6 mb-1">
-        <TabBar tabs={TABS} active={tab} onChange={setTab} />
+        <TabBar
+          tabs={TABS}
+          active={tab}
+          onChange={(t) => {
+            setTab(t);
+            setSubTab("website");
+          }}
+        />
       </div>
 
       <div className="mt-4">
@@ -997,29 +1072,24 @@ export default function AnalyticsPage() {
             xSnapshots={xSnapshots}
             linkedInSnapshots={linkedInSnapshots}
             loading={loading}
-            onOpenSite={setTab}
-            onOpenXAccount={(id) => setTab(`x-${id}`)}
-            onOpenLinkedIn={(id) => setTab(`li-${id}`)}
-            onOpenLinkedInTonyInfo={() => setTab("linkedin-tony")}
+            onOpenBrand={openBrand}
           />
-        ) : isXTab(tab) ? (
-          <XSection
-            color={X_BADGE_COLORS[xAccountFromTab(tab)]}
-            snapshot={xSnapshots[xAccountFromTab(tab)] ?? null}
-            loading={loading}
-          />
-        ) : isLinkedInTab(tab) ? (
-          <LinkedInSection
-            color={LINKEDIN_BADGE_COLORS[linkedInAccountFromTab(tab)]}
-            snapshot={linkedInSnapshots[linkedInAccountFromTab(tab)] ?? null}
-            loading={loading}
-          />
-        ) : tab === "linkedin-tony" ? (
-          <LinkedInTonyInfo />
         ) : (
-          <SiteSection
-            color={BADGE_COLORS[tab]}
+          <BrandSection
+            site={tab}
+            subTab={subTab}
+            onSubTabChange={setSubTab}
             snapshot={snapshots[tab] ?? null}
+            xSnapshot={
+              SITE_TO_X_ACCOUNT[tab]
+                ? (xSnapshots[SITE_TO_X_ACCOUNT[tab]!] ?? null)
+                : null
+            }
+            linkedInSnapshot={
+              SITE_TO_LINKEDIN_ACCOUNT[tab]
+                ? (linkedInSnapshots[SITE_TO_LINKEDIN_ACCOUNT[tab]!] ?? null)
+                : null
+            }
             loading={loading}
           />
         )}

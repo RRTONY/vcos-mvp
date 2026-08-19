@@ -99,7 +99,14 @@ export function PagesTable({ rows }: { rows: PageRow[] }) {
     activeUsers: r.activeUsers ?? 0,
   }));
 
-  const q = query.trim().toLowerCase();
+  // Strip a pasted-in protocol/domain (e.g. "https://ramprate.com/blog/x")
+  // down to just the path ("/blog/x") so searching by a full URL copied from
+  // the browser or GA4 matches the same way searching by title does - rows
+  // only ever store the relative path, never the domain.
+  const q = query
+    .trim()
+    .toLowerCase()
+    .replace(/^https?:\/\/[^/]+/, "");
   const filtered = q
     ? normalized.filter((r) => `${r.title} ${r.path}`.toLowerCase().includes(q))
     : normalized;
