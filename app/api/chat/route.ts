@@ -148,6 +148,14 @@ export async function POST(req: NextRequest) {
           err instanceof Error && "status" in err
             ? (err as { status: number }).status
             : 0;
+        // Previously silent - the user only ever saw the generic fallback
+        // below with no way to tell an expired API key from an Anthropic
+        // outage from a bad request. Log the real error so this is
+        // diagnosable from Netlify function logs.
+        console.error(
+          `[chat] Anthropic call failed for ${username} (status ${status}):`,
+          err,
+        );
         const friendly =
           status === 429 || status === 529
             ? CONTACT_MSG
