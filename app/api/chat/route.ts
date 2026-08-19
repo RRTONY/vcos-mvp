@@ -2,7 +2,6 @@
 // operating identity) + a live, role-scoped snapshot of VCOS data.
 import { NextRequest, NextResponse } from "next/server";
 import Anthropic from "@anthropic-ai/sdk";
-import { fetch as undiciFetch } from "undici";
 import { SYSTEM_STATIC, buildLiveBlock } from "@/lib/vcos-brain";
 import { buildChatContext } from "@/lib/chat-context";
 import {
@@ -64,12 +63,7 @@ export async function POST(req: NextRequest) {
   if (!role || !username)
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  // .trim() guards against invisible trailing whitespace/newline in the
-  // stored env var - a common cause of a bare 401 from Anthropic that looks
-  // identical to an actually-wrong key, since the dashboard UI doesn't
-  // visually distinguish "abc123" from "abc123\n".
-  const rawApiKey = process.env.ANTHROPIC_API_KEY_CHAT;
-  const apiKey = rawApiKey?.trim();
+  const apiKey = process.env.ANTHROPIC_API_KEY_CHAT;
   if (!apiKey)
     return NextResponse.json(
       { error: "ANTHROPIC_API_KEY_CHAT not configured" },
@@ -128,16 +122,7 @@ export async function POST(req: NextRequest) {
     },
   ];
 
-  // Passing { cache: "no-store" } to the global fetch didn't help - the 401
-  // came back branded as Netlify's own response (server: Netlify, no
-  // anthropic-request-id), meaning something replaces globalThis.fetch
-  // itself in Netlify's Next.js runtime, not just its cache behavior. Using
-  // undici's own fetch (a separate HTTP client, not routed through whatever
-  // global fetch Netlify's adapter installs) bypasses that layer entirely.
-  const client = new Anthropic({
-    apiKey,
-    fetch: undiciFetch as unknown as typeof fetch,
-  });
+  const client = new Anthropic({ apiKey });
   const lastUser = messages[messages.length - 1];
 
   const stream = new ReadableStream<Uint8Array>({
@@ -163,100 +148,11 @@ export async function POST(req: NextRequest) {
           err instanceof Error && "status" in err
             ? (err as { status: number }).status
             : 0;
-        // Previously silent - the user only ever saw the generic fallback
-        // below with no way to tell an expired API key from an Anthropic
-        // outage from a bad request. Log the real error so this is
-        // diagnosable from Netlify function logs.
-        console.error(
-          `[chat] Anthropic call failed for ${username} (status ${status}):`,
-          err,
-        );
         const friendly =
           status === 429 || status === 529
             ? CONTACT_MSG
             : "VCoS-AI is temporarily unavailable. Please try again in a moment.";
         controller.enqueue(enc.encode(`\n\n⚠️ ${friendly}`));
-        // TEMPORARY: surface the real error to admins only, so this can be
-        // diagnosed without Netlify log access. Remove once the root cause
-        // (production-only Anthropic call failure) is found and fixed.
-        if (isAdmin) {
-          const name = err instanceof Error ? err.name : typeof err;
-          const msg = err instanceof Error ? err.message : String(err);
-          const keyLen = `raw=${rawApiKey?.length ?? 0} trimmed=${apiKey?.length ?? 0}`;
-          // A bare 401 with no body is unusual for Anthropic's API (it
-          // normally includes a JSON error body) - more typical of an edge/
-          // gateway layer (e.g. Cloudflare) rejecting the request before it
-          // reaches Anthropic's application layer. requestID/headers reveal
-          // whether this actually reached Anthropic's servers at all.
-          const apiErr = err as {
-            requestID?: string;
-            headers?: { forEach?: (cb: (v: string, k: string) => void) => void };
-          };
-          const headerPairs: string[] = [];
-          apiErr.headers?.forEach?.((v, k) => headerPairs.push(`${k}=${v}`));
-          // Both the platform fetch and an independent undici client hit the
-          // identical failure - that only makes sense if something below the
-          // JS HTTP-client layer is redirecting outbound HTTPS traffic
-          // (e.g. an HTTPS_PROXY-style env var), since both would otherwise
-          // open their own independent connections. Check for that directly.
-          const proxyVars = [
-            "HTTPS_PROXY",
-            "https_proxy",
-            "HTTP_PROXY",
-            "http_proxy",
-            "NO_PROXY",
-            "no_proxy",
-            "NODE_OPTIONS",
-            "AWS_LAMBDA_FUNCTION_NAME",
-            "NETLIFY",
-          ]
-            .map((k) => `${k}=${process.env[k] ?? "unset"}`)
-            .join(", ");
-
-          // Decisive test: does ANY outbound HTTPS call from this function
-          // fail the same way, or is it specific to api.anthropic.com? If a
-          // totally unrelated, unauthenticated API also comes back branded
-          // as Netlify, this is a blanket networking/DNS issue for the whole
-          // function, not anything specific to Anthropic or this key.
-          let sideTest = "not run";
-          try {
-            const dns = await import("node:dns/promises");
-            const addrs = await dns.lookup("api.anthropic.com", { all: true });
-            const r = await undiciFetch("https://api.github.com/zen");
-            const rServer = r.headers.get("server");
-            sideTest = `dns=${JSON.stringify(addrs)} | github.com status=${r.status} server=${rServer}`;
-          } catch (sideErr) {
-            sideTest = `side-test failed: ${sideErr instanceof Error ? sideErr.message : String(sideErr)}`;
-          }
-
-          // GitHub (plain, buffered GET) succeeded while Anthropic's
-          // streaming call failed - the one real difference is that
-          // messages.stream() expects a long-lived SSE response, a known
-          // weak spot for traditional Lambda-backed functions. Isolate that:
-          // try the SAME Anthropic endpoint, same key, but non-streaming.
-          let nonStreamTest = "not run";
-          try {
-            const nonStreamClient = new Anthropic({ apiKey, fetch: undiciFetch as unknown as typeof fetch });
-            const resp = await nonStreamClient.messages.create({
-              model: MODEL,
-              max_tokens: 10,
-              messages: [{ role: "user", content: "say hi" }],
-            });
-            nonStreamTest = `SUCCESS - ${resp.content[0]?.type === "text" ? resp.content[0].text : "(non-text)"}`;
-          } catch (nsErr) {
-            const nsStatus =
-              nsErr instanceof Error && "status" in nsErr
-                ? (nsErr as { status: number }).status
-                : 0;
-            nonStreamTest = `FAILED status=${nsStatus} - ${nsErr instanceof Error ? nsErr.message : String(nsErr)}`;
-          }
-
-          controller.enqueue(
-            enc.encode(
-              `\n\n[debug: ${name} status=${status} - ${msg} | key length ${keyLen} | requestID=${apiErr.requestID ?? "none"} | headers: ${headerPairs.join(", ") || "none"} | env: ${proxyVars} | side-test: ${sideTest} | non-stream test: ${nonStreamTest}]`,
-            ),
-          );
-        }
         controller.close();
       }
 
