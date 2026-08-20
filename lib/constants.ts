@@ -53,6 +53,11 @@ export const ANALYTICS_SITES = [
     label: "Tony Greenberg",
     propertyEnvVar: "GA4_PROPERTY_ID_TONYGREENBERG",
   },
+  {
+    id: "clarisseartist",
+    label: "Clarisse Artist",
+    propertyEnvVar: "GA4_PROPERTY_ID_CLARISSEARTIST",
+  },
 ] as const;
 
 export type AnalyticsSiteId = (typeof ANALYTICS_SITES)[number]["id"];

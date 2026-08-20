@@ -39,7 +39,9 @@ async function generateBrief(): Promise<string> {
   const apiKey = process.env.ANTHROPIC_API_KEY_REPORTS;
   if (!apiKey) throw new Error("ANTHROPIC_API_KEY_REPORTS not configured");
   const ctx = await buildChatContext("tony", true); // whole-team, admin scope
-  const client = new Anthropic({ apiKey });
+  // Explicit baseURL - see app/api/chat/route.ts for why (Netlify AI Gateway
+  // silently injects ANTHROPIC_BASE_URL, which the SDK would otherwise use).
+  const client = new Anthropic({ apiKey, baseURL: "https://api.anthropic.com" });
   const msg = await client.messages.create({
     model: "claude-haiku-4-5-20251001",
     max_tokens: 1500,

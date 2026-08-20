@@ -128,7 +128,10 @@ Respond with VALID JSON ONLY in exactly this shape:
 Rules: order the agenda by urgency (fire first). 4-8 agenda items. 1-3 critical, 1-4 high, 2-4 positive. Be specific and reference real names/work from the data. No markdown, no prose outside the JSON.`;
 
   try {
-    const client = new Anthropic({ apiKey });
+    // Explicit baseURL - see app/api/chat/route.ts for why (Netlify AI
+    // Gateway silently injects ANTHROPIC_BASE_URL, which the SDK would
+    // otherwise use).
+    const client = new Anthropic({ apiKey, baseURL: "https://api.anthropic.com" });
     const msg = await client.messages.create({
       model: "claude-haiku-4-5-20251001",
       max_tokens: 2000,

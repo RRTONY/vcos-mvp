@@ -36,6 +36,7 @@ const BADGE_COLORS: Record<AnalyticsSiteId, string> = {
   ramprate: "#2A78D6",
   impactsoul: "#4A3AA7",
   tonygreenberg: "#1BAF7A",
+  clarisseartist: "#D6427A",
 };
 
 const X_BADGE_COLORS: Record<XAccountId, string> = {
@@ -183,7 +184,7 @@ function OverviewPanel({
   onOpenBrand: (site: AnalyticsSiteId, subTab: SubTabId) => void;
 }) {
   const errorSites = ANALYTICS_SITES.filter(
-    (s) => (snapshots[s.id]?.notFoundPages.length ?? 0) > 0,
+    (s) => (snapshots[s.id]?.notFoundPages?.length ?? 0) > 0,
   );
 
   return (

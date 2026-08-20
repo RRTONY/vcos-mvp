@@ -195,7 +195,9 @@ async function analyzeReport(report: ReportBody): Promise<AiAnalysis | null> {
   const apiKey = process.env.ANTHROPIC_API_KEY_REPORTS;
   if (!apiKey) return null;
 
-  const client = new Anthropic({ apiKey });
+  // Explicit baseURL - see app/api/chat/route.ts for why (Netlify AI Gateway
+  // silently injects ANTHROPIC_BASE_URL, which the SDK would otherwise use).
+  const client = new Anthropic({ apiKey, baseURL: "https://api.anthropic.com" });
 
   const prompt = `You are analyzing a weekly report from ${report.name} for the week of ${report.week}. Provide a concise executive analysis.
 

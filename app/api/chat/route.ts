@@ -122,7 +122,13 @@ export async function POST(req: NextRequest) {
     },
   ];
 
-  const client = new Anthropic({ apiKey });
+  // baseURL must be explicit - otherwise the SDK falls back to
+  // process.env.ANTHROPIC_BASE_URL, which Netlify's AI Gateway silently
+  // injects (pointing at its own gateway, not api.anthropic.com) whenever it
+  // doesn't see a plain ANTHROPIC_API_KEY set. That caused every call to
+  // fail with a bare 401 branded "Server: Netlify" - it never reached
+  // Anthropic at all.
+  const client = new Anthropic({ apiKey, baseURL: "https://api.anthropic.com" });
   const lastUser = messages[messages.length - 1];
 
   const stream = new ReadableStream<Uint8Array>({
