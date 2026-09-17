@@ -351,13 +351,15 @@ export default function SubmitPage() {
     const missingNote = topTasks.find((t) => {
       const s = taskStatuses[t.id]?.status;
       return (
-        (s === "at_risk" || s === "blocked") &&
+        (s === "at_risk" || s === "blocked" || s === "closed") &&
         !(taskStatuses[t.id]?.note ?? "").trim()
       );
     });
     if (missingNote) {
       toast(
-        `"${missingNote.name}" is At Risk/Blocked - please explain what's blocking it and a new date.`,
+        taskStatuses[missingNote.id]?.status === "closed"
+          ? `"${missingNote.name}" is Closed - please explain why it's no longer relevant.`
+          : `"${missingNote.name}" is At Risk/Blocked - please explain what's blocking it and a new date.`,
       );
       return;
     }
@@ -614,7 +616,9 @@ export default function SubmitPage() {
                 const overdue = bucketFor(t.dueTs) === "overdue";
                 const entry = taskStatuses[t.id];
                 const needsNote =
-                  entry?.status === "at_risk" || entry?.status === "blocked";
+                  entry?.status === "at_risk" ||
+                  entry?.status === "blocked" ||
+                  entry?.status === "closed";
                 return (
                   <div
                     key={t.id}
@@ -661,7 +665,11 @@ export default function SubmitPage() {
                       <textarea
                         className="field-input resize-none mt-2 text-sm"
                         rows={2}
-                        placeholder="What's blocking it, specifically? What new date can you commit to? Is this blocked by another team member or team - who, and what do you need from them?"
+                        placeholder={
+                          entry?.status === "closed"
+                            ? "Why is this task no longer relevant or needed?"
+                            : "What's blocking it, specifically? What new date can you commit to? Is this blocked by another team member or team - who, and what do you need from them?"
+                        }
                         value={entry?.note ?? ""}
                         onChange={(e) => {
                           const note = e.target.value;

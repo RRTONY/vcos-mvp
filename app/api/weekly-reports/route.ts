@@ -78,12 +78,16 @@ async function buildOpenTasksLines(
     }
   }
 
-  // Push every task reviewed as "Done" back to ClickUp so the report is the
-  // source of truth for status, not just a Slack-side label. Best-effort per
-  // task - a ClickUp failure must never block the report from posting.
-  const doneTasks = tasks.filter((t) => statusMap.get(t.id)?.status === "done");
+  // Push every task reviewed as "Done" or "Closed" back to ClickUp so the
+  // report is the source of truth for status, not just a Slack-side label.
+  // Best-effort per task - a ClickUp failure must never block the report
+  // from posting.
+  const resolvedTasks = tasks.filter((t) => {
+    const status = statusMap.get(t.id)?.status;
+    return status === "done" || status === "closed";
+  });
   await Promise.all(
-    doneTasks.map((t) =>
+    resolvedTasks.map((t) =>
       closeTask(t.id, t.listId).catch((err) =>
         console.error(`ClickUp close failed for task ${t.id}:`, err),
       ),
@@ -99,7 +103,9 @@ async function buildOpenTasksLines(
     let line = `• <${t.url}|${t.name}> - Owner: ${name} - due ${t.dueDate}${overdueFlag} - *${label}*`;
     if (
       entry &&
-      (entry.status === "at_risk" || entry.status === "blocked") &&
+      (entry.status === "at_risk" ||
+        entry.status === "blocked" ||
+        entry.status === "closed") &&
       entry.note
     ) {
       line += `\n   ${entry.note}`;

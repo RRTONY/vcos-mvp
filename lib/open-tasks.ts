@@ -42,13 +42,19 @@ export function dueDateTasksOnly(tasks: Task[]): Task[] {
     .sort((a, b) => a.dueTs - b.dueTs);
 }
 
-export type TaskReviewStatus = "on_track" | "at_risk" | "blocked" | "done";
+export type TaskReviewStatus =
+  | "on_track"
+  | "at_risk"
+  | "blocked"
+  | "done"
+  | "closed";
 
 export const TASK_STATUS_LABELS: Record<TaskReviewStatus, string> = {
   on_track: "On Track",
   at_risk: "At Risk",
   blocked: "Blocked",
   done: "Done",
+  closed: "Closed (Not Relevant/Dropped)",
 };
 
 export interface TaskStatusEntry {
