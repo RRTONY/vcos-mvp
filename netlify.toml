@@ -1,6 +1,6 @@
 # ═══════════════════════════════════════════════════════════════
 # VCOS - Visual Chief of Staff · Netlify Configuration
-# Site: https://vsoc.netlify.app
+# Site: https://vcos-ramprate.netlify.app
 # Owner: Tony Greenberg / RampRate · ImpactSoul
 # Stack: Next.js 14 · Tailwind · @netlify/plugin-nextjs
 # Last updated: 2026-03-24
@@ -91,7 +91,7 @@
 [[headers]]
   for = "/api/*"
   [headers.values]
-    Access-Control-Allow-Origin  = "https://vsoc.netlify.app/"
+    Access-Control-Allow-Origin  = "https://vcos-ramprate.netlify.app"
     Access-Control-Allow-Methods = "GET, POST, OPTIONS"
     Access-Control-Allow-Headers = "Content-Type, Authorization"
 
