@@ -374,6 +374,11 @@ export default function SystemsPage() {
                         <button
                           onClick={() => handleRefresh(row.source)}
                           disabled={refreshing !== null}
+                          title={
+                            row.source === "morning-brief"
+                              ? "Generates the brief and posts it to Slack now"
+                              : undefined
+                          }
                           className="ml-auto text-xs border border-sand3 px-2 py-0.5 hover:border-ink3 hover:text-ink transition-colors disabled:opacity-40"
                         >
                           {refreshing === row.source ? (

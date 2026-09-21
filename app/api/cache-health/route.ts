@@ -7,6 +7,7 @@ import { buildWebWorkSnapshot } from "@/lib/webwork";
 import { buildFirefliesSnapshot } from "@/lib/fireflies";
 import { buildSystemsStatusSnapshot } from "@/lib/systems-status";
 import { recordSuccess, recordFailure } from "@/lib/api-cache";
+import { runMorningBrief, MORNING_BRIEF_SOURCE } from "@/lib/morning-brief";
 
 const STALE_MINUTES = 60;
 const DEAD_MINUTES = 24 * 60;
@@ -17,6 +18,7 @@ const SOURCES = [
   { key: "webwork", label: "WebWork" },
   { key: "fireflies", label: "Fireflies" },
   { key: "systems-status", label: "Systems Status" },
+  { key: MORNING_BRIEF_SOURCE, label: "Morning Brief" },
 ] as const;
 
 type SourceKey = (typeof SOURCES)[number]["key"];
@@ -88,6 +90,14 @@ export async function GET(req: NextRequest) {
 async function refreshSource(
   source: SourceKey,
 ): Promise<{ ok: boolean; error?: string }> {
+  // Morning brief posts to Slack as a side effect of a "refresh" - keep it on
+  // its own path so clicking it is a deliberate, single-source action (never
+  // bundled into "Refresh All", which admins expect to be side-effect-free).
+  if (source === MORNING_BRIEF_SOURCE) {
+    const result = await runMorningBrief();
+    return result.ok ? { ok: true } : { ok: false, error: result.error };
+  }
+
   try {
     let snapshot: unknown;
     if (source === "slack") snapshot = await buildSlackSnapshot();
