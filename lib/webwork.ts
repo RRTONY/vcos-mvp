@@ -34,6 +34,12 @@ function releaseSlot() {
   else activeRequests--;
 }
 
+// A 401/403 means the API key itself is bad (WebWork keys are JWTs that
+// expire), so every request would fail the same way - retrying them all just
+// burns time until the function times out and the UI gets nothing back.
+// Thrown instead so the whole snapshot fails fast with a clear message.
+export class WebWorkAuthError extends Error {}
+
 export interface DayHours {
   date: string;
   minutes: number;
@@ -74,6 +80,12 @@ export async function getMemberHours(
     return { date, minutes: 0, entries: [], ok: false };
   }
   releaseSlot();
+
+  if (res.status === 401 || res.status === 403) {
+    throw new WebWorkAuthError(
+      `WebWork rejected WEBWORK_API_KEY (HTTP ${res.status}) - the key has likely expired. Generate a new one in WebWork and update the env var.`,
+    );
+  }
 
   if (!res.ok) {
     if (attempt + 1 < MAX_ATTEMPTS) {
@@ -166,7 +178,8 @@ export async function buildWebWorkSnapshot(weekMonday?: Date) {
           byDay,
           incomplete: thisIncomplete || lastIncomplete,
         };
-      } catch {
+      } catch (err) {
+        if (err instanceof WebWorkAuthError) throw err;
         return {
           username,
           totalMinutes: 0,
