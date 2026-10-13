@@ -1,5 +1,12 @@
 import { getTeamMembers } from "./team-db";
-import { getMondayOfWeekPT, shiftWeeks, weekStartISO } from "./week-utils";
+import { getCached, setCache } from "./api-cache";
+import {
+  getMondayOfWeekPT,
+  ptDateISO,
+  shiftWeeks,
+  todayPT,
+  weekStartISO,
+} from "./week-utils";
 
 const BASE = "https://api.webwork-tracker.com/api/v2";
 
@@ -34,8 +41,8 @@ function releaseSlot() {
   else activeRequests--;
 }
 
-// A 401/403 means the API key itself is bad (WebWork keys are JWTs that
-// expire), so every request would fail the same way - retrying them all just
+// A 401/403 means the API key itself is bad (WebWork keys can expire, so
+// every request would fail the same way) - retrying them all just
 // burns time until the function times out and the UI gets nothing back.
 // Thrown instead so the whole snapshot fails fast with a clear message.
 export class WebWorkAuthError extends Error {}
@@ -68,7 +75,7 @@ export async function getMemberHours(
   await acquireSlot();
   let res: Response;
   try {
-    res = await fetch(`${BASE}/time-entries?user_id=${userId}&date=${date}`, {
+    res = await fetch(`${BASE}/time-entries?user_id=${userId}&date=${date}&per_page=100`, {
       headers: headers(),
     });
   } catch {
@@ -88,8 +95,19 @@ export async function getMemberHours(
   }
 
   if (!res.ok) {
+    const retryAfterSec = Number(res.headers.get("Retry-After"));
+    // WebWork allows ~150 requests/minute and answers a 429 with
+    // Retry-After: 60. Waiting that out inside a request outlives the
+    // Netlify function timeout, so the snapshot is killed and nothing gets
+    // saved. Give up on this day instead - days that did load are kept in the
+    // day cache below, so the next refresh only fetches what's missing.
+    if (res.status === 429 && retryAfterSec > 5) {
+      console.error(
+        `WebWork rate-limited user ${userId} on ${date} (Retry-After ${retryAfterSec}s)`,
+      );
+      return { date, minutes: 0, entries: [], ok: false };
+    }
     if (attempt + 1 < MAX_ATTEMPTS) {
-      const retryAfterSec = Number(res.headers.get("Retry-After"));
       const waitMs =
         res.status === 429 && Number.isFinite(retryAfterSec) && retryAfterSec > 0
           ? retryAfterSec * 1000
@@ -130,12 +148,66 @@ export async function getMemberHours(
   };
 }
 
+// Past days barely change, so once a day is a couple of days old its result
+// is kept in Supabase (vcos_api_cache, source "webwork-days") instead of being
+// re-fetched on every refresh. A full snapshot needs 154 requests - just over
+// WebWork's per-minute limit - but with this cache a routine refresh only
+// fetches the last few days, and a refresh that got rate-limited halfway
+// finishes on the next try instead of starting over.
+const DAY_CACHE_SOURCE = "webwork-days";
+const FINAL_AFTER_DAYS = 2;
+const DAY_CACHE_KEEP_DAYS = 90;
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+type DayCache = Record<string, DayHours>; // `${userId}|${date}` -> day
+
+function daysAgoPT(n: number): string {
+  return ptDateISO(new Date(Date.now() - n * DAY_MS));
+}
+
+async function loadDayCache(): Promise<DayCache> {
+  try {
+    const row = await getCached(DAY_CACHE_SOURCE);
+    return (row?.data as DayCache) ?? {};
+  } catch {
+    return {};
+  }
+}
+
+async function saveDayCache(cache: DayCache) {
+  const keepFrom = daysAgoPT(DAY_CACHE_KEEP_DAYS);
+  const pruned: DayCache = {};
+  for (const [key, day] of Object.entries(cache)) {
+    if (day.date >= keepFrom) pruned[key] = day;
+  }
+  try {
+    await setCache(DAY_CACHE_SOURCE, pruned);
+  } catch (err) {
+    console.error("Failed to save WebWork day cache:", err);
+  }
+}
+
 export async function getWeekHours(
   userId: number,
   weekDates: string[],
+  dayCache: DayCache = {},
+  onNewFinalDay: () => void = () => {},
 ): Promise<{ totalMinutes: number; byDay: DayHours[]; incomplete: boolean }> {
+  const today = todayPT();
+  const finalBefore = daysAgoPT(FINAL_AFTER_DAYS - 1);
   const byDay = await Promise.all(
-    weekDates.map((d) => getMemberHours(userId, d)),
+    weekDates.map(async (date) => {
+      // Days that haven't happened yet can't have hours - no need to ask.
+      if (date > today) return { date, minutes: 0, entries: [], ok: true };
+      const key = `${userId}|${date}`;
+      if (dayCache[key]) return dayCache[key];
+      const day = await getMemberHours(userId, date);
+      if (day.ok && date < finalBefore) {
+        dayCache[key] = day;
+        onNewFinalDay();
+      }
+      return day;
+    }),
   );
   return {
     totalMinutes: byDay.reduce((s, d) => s + d.minutes, 0),
@@ -145,8 +217,8 @@ export async function getWeekHours(
 }
 
 // Defaults to the current PT week. Pass a specific Monday to fetch any other
-// week (used by the Team Hours date picker) - those calls bypass the Supabase
-// cache entirely and hit WebWork live, since only the current week is cached.
+// week (used by the Team Hours date picker) - those calls skip the snapshot
+// cache (only the current week is cached) but still reuse the per-day cache.
 export async function buildWebWorkSnapshot(weekMonday?: Date) {
   const weekDates = weekMonday
     ? weekDatesFrom(weekMonday)
@@ -157,6 +229,11 @@ export async function buildWebWorkSnapshot(weekMonday?: Date) {
 
   const teamMembers = await getTeamMembers();
   const trackable = teamMembers.filter((m) => m.webwork_user_id);
+  const dayCache = await loadDayCache();
+  let dayCacheChanged = false;
+  const markChanged = () => {
+    dayCacheChanged = true;
+  };
 
   const raw = await Promise.all(
     trackable.map(async (member) => {
@@ -168,8 +245,8 @@ export async function buildWebWorkSnapshot(weekMonday?: Date) {
           { totalMinutes, byDay, incomplete: thisIncomplete },
           { totalMinutes: lastMinutes, incomplete: lastIncomplete },
         ] = await Promise.all([
-          getWeekHours(userId, weekDates),
-          getWeekHours(userId, lastWeekDates),
+          getWeekHours(userId, weekDates, dayCache, markChanged),
+          getWeekHours(userId, lastWeekDates, dayCache, markChanged),
         ]);
         return {
           username,
@@ -190,6 +267,8 @@ export async function buildWebWorkSnapshot(weekMonday?: Date) {
       }
     }),
   );
+
+  if (dayCacheChanged) await saveDayCache(dayCache);
 
   const members = raw.map((r) => ({
     username: r.username,
