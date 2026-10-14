@@ -189,6 +189,12 @@ function getPostersFromMessages(
     names: Array.from(
       new Set([
         ...window.map((m) => (m.user ? userMap[m.user] : "")).filter(Boolean),
+        // Reports submitted through VCoS are posted by the VCOS Bot user, so
+        // the poster is always "VCOS Bot" - the real author is only in the
+        // "*Weekly Report - <name> - <week>*" header (app/api/weekly-reports).
+        ...window
+          .map((m) => /\*Weekly Report - (.+?) - /.exec(m.text ?? "")?.[1])
+          .filter((n): n is string => !!n),
         ...window
           .filter((m) => m.subtype === "bot_message" && m.username)
           .map((m) => m.username!),
@@ -221,9 +227,11 @@ function whoFiled(
 ): string[] {
   const filed: string[] = [];
   for (const member of reportMembers) {
+    // The full name always counts too - VCoS-submitted reports carry it in
+    // their header, and custom aliases (e.g. a nickname) don't include it.
     const aliases = member.slack_aliases.length
-      ? member.slack_aliases
-      : [member.full_name.split(" ")[0].toLowerCase()];
+      ? [...member.slack_aliases, member.full_name]
+      : [member.full_name.split(" ")[0].toLowerCase(), member.full_name];
     const didFile =
       names.some((p) => aliases.some((a) => matchesAlias(p, a))) ||
       handles.some((h) => aliases.some((a) => matchesAlias(h, a)));
