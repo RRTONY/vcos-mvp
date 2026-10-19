@@ -188,8 +188,8 @@ export default function ProfilePage() {
 
   return (
     <div className="mt-6">
-      <Link href="/kickoff" className="text-xs text-accent hover:underline">
-        ← Back to Team Performance
+      <Link href="/team?tab=people" className="text-xs text-accent hover:underline">
+        ← Back to Team
       </Link>
 
       {/* Header */}
@@ -202,7 +202,7 @@ export default function ProfilePage() {
           className="w-14 h-14 text-lg"
         />
         <div>
-          <h1 className="font-display text-2xl tracking-wide">
+          <h1 className="font-display text-3xl font-extrabold tracking-tight">
             {member.full_name}
           </h1>
           <div className="text-sm text-ink3">

@@ -1,4 +1,7 @@
 /** @type {import('tailwindcss').Config} */
+// Palette follows the "CEO Command Centre" briefing-room design: deep navy
+// header with a single gold accent line, quiet slate neutrals, and status
+// colour used only where it carries meaning.
 module.exports = {
   content: [
     './app/**/*.{js,ts,jsx,tsx,mdx}',
@@ -7,10 +10,11 @@ module.exports = {
   theme: {
     extend: {
       fontFamily: {
-        sans: ['"Cabinet Grotesk"', 'Inter', 'sans-serif'],
+        sans: ['Inter', 'system-ui', '-apple-system', '"Segoe UI"', 'sans-serif'],
         mono: ['"IBM Plex Mono"', 'monospace'],
-        display: ['"Bebas Neue"', 'sans-serif'],
-        serif: ['Fraunces', 'serif'],
+        // Headings, KPI numbers, brand - was Bebas Neue / Fraunces
+        display: ['Manrope', '"Segoe UI"', 'system-ui', 'sans-serif'],
+        serif: ['Manrope', '"Segoe UI"', 'system-ui', 'sans-serif'],
       },
       fontSize: {
         // Bump everything up one notch
@@ -25,30 +29,49 @@ module.exports = {
       },
       colors: {
         // Text
-        ink:  '#111827',
-        ink2: '#1F2937',
-        ink3: '#6B7280',
-        ink4: '#9CA3AF',
+        ink:  '#0F1B33',
+        ink2: '#2B3750',
+        ink3: '#5B6780',
+        ink4: '#8A94AB',
         // Surfaces
         sand:  '#FFFFFF',
-        sand2: '#F9FAFB',
-        sand3: '#F3F4F6',
-        sand4: '#E5E7EB',
+        sand2: '#F2F4F8',
+        sand3: '#EDF0F6',
+        sand4: '#DCE1EC',
+        soft:  '#F7F8FB',
+        // Brand
+        navy:  '#0F1B33',
+        navy2: '#1C2E55',
+        'on-navy-dim': '#B9C4DD',
+        gold:  '#C9A24B',
+        'gold-light': '#E9D18F',
         // Accent
-        accent:         '#4F46E5',
-        'accent-dark':  '#4338CA',
-        'accent-light': '#EEF2FF',
+        accent:         '#2747C9',
+        'accent-dark':  '#1A2F8F',
+        'accent-light': '#E4EAFB',
         // Status
-        success: '#16A34A',
-        'success-light': '#DCFCE7',
-        warning: '#D97706',
-        'warning-light': '#FEF3C7',
-        danger:  '#DC2626',
-        'danger-light':  '#FEE2E2',
+        success: '#1C7C54',
+        'success-dark': '#115C3C',
+        'success-light': '#DFF3E8',
+        warning: '#B7791F',
+        'warning-dark': '#7A4E0E',
+        'warning-light': '#FDF1D8',
+        danger:  '#B8322B',
+        'danger-dark': '#8C211B',
+        'danger-light':  '#FCE9E7',
+        slate: '#64708A',
+        'slate-dark': '#434E66',
+        'slate-light': '#E8EBF1',
+      },
+      borderRadius: {
+        lg: '14px',
+        xl: '16px',
+        '2xl': '18px',
       },
       boxShadow: {
-        card: '0 1px 3px 0 rgba(0,0,0,0.08), 0 1px 2px -1px rgba(0,0,0,0.05)',
-        'card-md': '0 4px 6px -1px rgba(0,0,0,0.07), 0 2px 4px -2px rgba(0,0,0,0.05)',
+        card: '0 1px 2px rgba(15,27,51,.06), 0 2px 6px -2px rgba(15,27,51,.08)',
+        'card-md': '0 2px 4px rgba(15,27,51,.06), 0 12px 28px -12px rgba(15,27,51,.22)',
+        'card-lg': '0 4px 8px rgba(15,27,51,.08), 0 22px 44px -16px rgba(15,27,51,.32)',
       },
     },
   },

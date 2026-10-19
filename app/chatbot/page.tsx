@@ -483,7 +483,7 @@ export default function ChatbotPage() {
     <div className="flex flex-col" style={{ height: "calc(100vh - 9rem)" }}>
       <div className="flex items-center justify-between mt-6 mb-3 gap-3">
         <div className="min-w-0">
-          <h1 className="font-display text-2xl tracking-widest">VCoS-AI</h1>
+          <h1 className="font-display text-3xl font-extrabold tracking-tight">VCoS-AI</h1>
           <p className="text-xs text-ink4 mt-0.5">
             Your Virtual Chief of Staff - remembers your chats, grounded in live
             data{isAdmin ? "" : " (your own data)"}. Create &amp; download

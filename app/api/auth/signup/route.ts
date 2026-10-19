@@ -37,7 +37,7 @@ export async function POST(req: NextRequest) {
           },
           body: JSON.stringify({
             channel: adminChannel,
-            text: `🔔 New VCOS access request from *${name}*${email ? ` (${email})` : ""}\nRequested username: ${username_requested || "-"}\n${message ? `Message: ${message}` : ""}\nApprove at /settings/requests`,
+            text: `🔔 New VCOS access request from *${name}*${email ? ` (${email})` : ""}\nRequested username: ${username_requested || "-"}\n${message ? `Message: ${message}` : ""}\nApprove in VCoS → Team & Users → Requests (/settings/people)`,
           }),
         });
       }

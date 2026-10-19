@@ -3,8 +3,6 @@
 import { useEffect, useState } from "react";
 import { useMe } from "@/hooks/useMe";
 import { DEAL_COLD_DAYS, DEAL_STUCK_DAYS } from "@/lib/constants";
-import { isReportFrom } from "@/lib/report-match";
-import { getMondayOfWeekPT, weekStartISO } from "@/lib/week-utils";
 
 // ─── Types ─────────────────────────────────────────────────────────────────
 
@@ -49,18 +47,6 @@ interface PipelineMetrics {
   totalDeals: number;
   goneCold: number;
   stuck: number;
-}
-
-interface KpiData {
-  teamHours: number;
-  memberHours: { username: string; totalHours: number }[];
-  totalTasks: number;
-  overdue: number;
-  overduePercent: number;
-  urgent: number;
-  invoiceCount: number;
-  invoicePending: number;
-  closedYtd: number;
 }
 
 const STAGE_COLOR: Record<string, string> = {
@@ -681,19 +667,14 @@ function EditModal({
 
 export default function BdPage() {
   const { isAdmin } = useMe();
-  const [kpi, setKpi] = useState<KpiData | null>(null);
+  const [closedYtd, setClosedYtd] = useState<number | null>(null);
   const [deals, setDeals] = useState<BdDeal[]>([]);
   const [metrics, setMetrics] = useState<PipelineMetrics | null>(null);
-  const [kpiLoading, setKpiLoading] = useState(true);
   const [dealsLoading, setDealsLoading] = useState(true);
   const [today, setToday] = useState("");
   const [editDeal, setEditDeal] = useState<Partial<BdDeal> | null>(null);
   const [saving, setSaving] = useState(false);
   const [teamNames, setTeamNames] = useState<string[]>([]);
-  const [reportMembers, setReportMembers] = useState<string[]>([]);
-  const [currentWeekReports, setCurrentWeekReports] = useState<
-    { submitted_by: string }[]
-  >([]);
 
   useEffect(() => {
     fetch("/api/team", { cache: "no-store" })
@@ -708,9 +689,6 @@ export default function BdPage() {
         ) => {
           const active = (data ?? []).filter((m) => m.active);
           setTeamNames(active.map((m) => m.full_name));
-          setReportMembers(
-            active.filter((m) => m.files_report).map((m) => m.full_name),
-          );
         },
       )
       .catch(() => {});
@@ -725,53 +703,19 @@ export default function BdPage() {
       }),
     );
 
-    Promise.all([
-      fetch("/api/webwork", { cache: "no-store" })
-        .then((r) => r.json())
-        .catch(() => null),
-      // Authoritative filed/missing source - matches week_label in Supabase,
-      // unlike slack-stats' filed/missing which can never attribute a report
-      // submitted through /submit (posted to Slack as the bot, not the user).
-      fetch(
-        `/api/weekly-reports?week_start=${weekStartISO(getMondayOfWeekPT())}`,
-        { cache: "no-store" },
-      )
-        .then((r) => r.json())
-        .catch(() => []),
-      fetch("/api/clickup-tasks", { cache: "no-store" })
-        .then((r) => r.json())
-        .catch(() => null),
-      fetch("/api/invoices", { cache: "no-store" })
-        .then((r) => r.json())
-        .catch(() => null),
-    ]).then(([ww, weeklyReports, cu, inv]) => {
-      setCurrentWeekReports(Array.isArray(weeklyReports) ? weeklyReports : []);
-      setKpi({
-        teamHours:
-          ww?.members?.reduce(
-            (s: number, m: { totalHours: number }) => s + m.totalHours,
-            0,
-          ) ?? 0,
-        memberHours: ww?.members ?? [],
-        totalTasks: cu?.totalTasks ?? 0,
-        overdue: cu?.overdue ?? 0,
-        overduePercent: cu?.overduePercent ?? 0,
-        urgent: cu?.urgent ?? 0,
-        invoiceCount: inv?.invoices?.length ?? 0,
-        invoicePending:
-          inv?.invoices?.filter(
-            (i: { status: string }) => i.status === "pending",
-          ).length ?? 0,
-        closedYtd:
+    fetch("/api/invoices", { cache: "no-store" })
+      .then((r) => r.json())
+      .catch(() => null)
+      .then((inv) => {
+        setClosedYtd(
           inv?.invoices
             ?.filter((i: { status: string }) => i.status === "paid")
             .reduce(
               (s: number, i: { amount: number }) => s + (i.amount ?? 0),
               0,
             ) ?? 0,
+        );
       });
-      setKpiLoading(false);
-    });
 
     fetch("/api/bd", { cache: "no-store" })
       .then((r) => r.json())
@@ -832,13 +776,6 @@ export default function BdPage() {
   const dealsByStage = (stage: string) =>
     deals.filter((d) => d.stage === stage).sort((a, b) => b.score - a.score);
 
-  const filedMembers = reportMembers.filter((name) =>
-    currentWeekReports.some((r) => isReportFrom(r.submitted_by, name)),
-  );
-  const missingMembers = reportMembers.filter(
-    (name) => !filedMembers.includes(name),
-  );
-
   // ── Render ────────────────────────────────────────────────────────────────
 
   return (
@@ -857,7 +794,7 @@ export default function BdPage() {
 
       {/* Page header */}
       <div className="flex items-center justify-between">
-        <h1 className="font-display text-xl tracking-widest">BD PIPELINE</h1>
+        <h1 className="font-display text-2xl font-extrabold tracking-tight">BD Pipeline</h1>
         <div className="flex items-center gap-3">
           {today && <span className="text-xs text-ink4">{today}</span>}
           {isAdmin && (
@@ -872,8 +809,14 @@ export default function BdPage() {
       </div>
 
       {/* ── Revenue forecast strip ─────────────────────────────────────────── */}
-      <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
         {[
+          {
+            value: closedYtd === null ? "…" : fmt(closedYtd),
+            label: "Closed YTD",
+            sub: "from paid invoices",
+            alert: false,
+          },
           {
             value: dealsLoading ? "…" : fmt(metrics?.weightedPipeline ?? 0),
             label: "Weighted Pipeline",
@@ -916,63 +859,6 @@ export default function BdPage() {
             {t.sub && <div className="text-xs text-ink4 mt-0.5">{t.sub}</div>}
           </div>
         ))}
-      </div>
-
-      {/* ── Operations KPIs ────────────────────────────────────────────────── */}
-      <div>
-        <div className="text-xs font-bold uppercase tracking-widest text-ink3 mb-2">
-          Operations
-        </div>
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
-          {[
-            {
-              value: kpiLoading ? "…" : `${Math.round(kpi?.teamHours ?? 0)}h`,
-              label: "Team Hours",
-              sub: `${kpi?.memberHours?.filter((m) => m.totalHours > 0).length ?? 0} members active`,
-              alert: false,
-            },
-            {
-              value: kpiLoading
-                ? "…"
-                : `${filedMembers.length}/${reportMembers.length}`,
-              label: "Reports Filed",
-              sub:
-                missingMembers.length > 0
-                  ? `Missing: ${missingMembers.map((n) => n.split(" ")[0]).join(", ")}`
-                  : "All filed ✓",
-              alert: !kpiLoading && missingMembers.length > 0,
-            },
-            {
-              value: kpiLoading ? "…" : `${kpi?.overduePercent ?? 0}%`,
-              label: "CRM Overdue",
-              sub: `${kpi?.overdue ?? 0} of ${kpi?.totalTasks ?? 0} tasks · ${kpi?.urgent ?? 0} urgent`,
-              alert: !kpiLoading && (kpi?.overduePercent ?? 0) > 50,
-            },
-            {
-              value: kpiLoading ? "…" : (kpi?.invoiceCount ?? 0),
-              label: "Invoices",
-              sub: `${kpi?.invoicePending ?? 0} pending`,
-              alert: !kpiLoading && (kpi?.invoicePending ?? 0) > 0,
-            },
-            {
-              value: kpiLoading ? "…" : fmt(kpi?.closedYtd ?? 0),
-              label: "Closed YTD",
-              sub: "from paid invoices",
-              alert: false,
-            },
-          ].map((t) => (
-            <div
-              key={t.label}
-              className={`border p-3 ${t.alert ? "border-red-300 bg-red-50" : "border-sand3"} ${kpiLoading ? "animate-pulse" : ""}`}
-            >
-              <div className="font-serif font-black text-2xl">{t.value}</div>
-              <div className="text-xs font-bold uppercase tracking-widest text-ink3 mt-0.5">
-                {t.label}
-              </div>
-              {t.sub && <div className="text-xs text-ink4 mt-0.5">{t.sub}</div>}
-            </div>
-          ))}
-        </div>
       </div>
 
       {/* ── Kanban ─────────────────────────────────────────────────────────── */}
@@ -1047,39 +933,6 @@ export default function BdPage() {
         )}
       </div>
 
-      {/* ── Hours bar ──────────────────────────────────────────────────────── */}
-      {!kpiLoading && (kpi?.memberHours?.length ?? 0) > 0 && (
-        <div>
-          <div className="text-xs font-bold uppercase tracking-widest text-ink3 mb-2">
-            Hours by Member This Week
-          </div>
-          <div className="card divide-y divide-sand3">
-            {[...(kpi?.memberHours ?? [])]
-              .sort((a, b) => b.totalHours - a.totalHours)
-              .map((m) => (
-                <div
-                  key={m.username}
-                  className="flex items-center gap-3 px-4 py-2"
-                >
-                  <span className="text-sm capitalize w-24 flex-shrink-0">
-                    {m.username}
-                  </span>
-                  <div className="flex-1 h-1.5 bg-sand3">
-                    <div
-                      className="h-full bg-black transition-all"
-                      style={{
-                        width: `${Math.min(100, (m.totalHours / 40) * 100)}%`,
-                      }}
-                    />
-                  </div>
-                  <span className="font-mono text-xs w-10 text-right">
-                    {m.totalHours}h
-                  </span>
-                </div>
-              ))}
-          </div>
-        </div>
-      )}
     </div>
   );
 }

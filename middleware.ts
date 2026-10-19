@@ -11,6 +11,15 @@ export async function middleware(req: NextRequest) {
   ) {
     return NextResponse.next();
   }
+  // Scheduled Briefing Room jobs authenticate with their own key; the route
+  // itself re-checks it before granting automation access.
+  if (
+    pathname === "/api/briefing" &&
+    process.env.BRIEFING_API_KEY &&
+    req.headers.get("x-briefing-key") === process.env.BRIEFING_API_KEY
+  ) {
+    return NextResponse.next();
+  }
 
   if (
     pathname.startsWith("/login") ||

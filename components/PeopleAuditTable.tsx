@@ -5,11 +5,19 @@ import Avatar from "@/components/Avatar";
 import { SUBMIT_STATUS_META } from "@/lib/report-status";
 import type { MemberAudit } from "@/hooks/useMemberAudit";
 
-/** Per-person table: weekly-report status, hours, and ClickUp load. */
+/** Suggested next step from a person's ClickUp load. */
+function nextStep(a: MemberAudit): string {
+  if (a.overdue > 10) return "Triage overdue backlog with PM";
+  if (a.urgent > 0) return "Clear urgent tasks";
+  if (a.total === 0) return "No ClickUp tasks assigned";
+  return "On track";
+}
+
+/** Per-person table: weekly-report status, hours, ClickUp load, next step. */
 export default function PeopleAuditTable({ rows }: { rows: MemberAudit[] }) {
   return (
     <div className="card overflow-x-auto">
-      <table className="w-full text-sm border-collapse min-w-[640px]">
+      <table className="w-full text-sm border-collapse min-w-[760px]">
         <thead>
           <tr className="border-b border-sand3">
             {[
@@ -20,6 +28,7 @@ export default function PeopleAuditTable({ rows }: { rows: MemberAudit[] }) {
               "Overdue",
               "Urgent",
               "Top highlight",
+              "Next step",
             ].map((h) => (
               <th
                 key={h}
@@ -62,7 +71,9 @@ export default function PeopleAuditTable({ rows }: { rows: MemberAudit[] }) {
                   </div>
                 </td>
                 <td className="py-2.5 px-3">
-                  {meta ? (
+                  {!a.filesReport ? (
+                    <span className="text-ink4">-</span>
+                  ) : meta ? (
                     <span className={meta.badge}>{meta.label}</span>
                   ) : (
                     <span className="badge-red">Missing</span>
@@ -92,6 +103,9 @@ export default function PeopleAuditTable({ rows }: { rows: MemberAudit[] }) {
                 </td>
                 <td className="py-2.5 px-3 text-ink3 text-xs max-w-[260px] truncate">
                   {a.report?.win || "-"}
+                </td>
+                <td className="py-2.5 px-3 text-xs text-ink3 whitespace-nowrap">
+                  {nextStep(a)}
                 </td>
               </tr>
             );

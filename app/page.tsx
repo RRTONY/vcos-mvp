@@ -4,7 +4,7 @@ import { useEffect, useState, useRef, useCallback } from "react";
 import Link from "next/link";
 import { useRefresh } from "@/components/RefreshContext";
 import { ShareSlackButton } from "@/components/ShareButtons";
-import type { Task, ClickUpData, SlackData, WebWorkMember } from "@/lib/types";
+import type { Task, ClickUpData, WebWorkMember } from "@/lib/types";
 import StaleBadge from "@/components/StaleBadge";
 import { useMe } from "@/hooks/useMe";
 import {
@@ -13,11 +13,9 @@ import {
   SLACK_CHANNEL_WEEKLY_REPORTS,
   OVERDUE_ALERT_THRESHOLD,
 } from "@/lib/constants";
-import { FiCheck, FiX, FiClock } from "react-icons/fi";
-import Spinner from "@/components/Spinner";
+import { FiChevronLeft, FiChevronRight } from "react-icons/fi";
+import PriorityTasks from "@/components/PriorityTasks";
 import {
-  classifySubmission,
-  SUBMIT_STATUS_META,
   reportState,
   type ReportState,
 } from "@/lib/report-status";
@@ -245,7 +243,6 @@ function MemberCard({
 }
 
 export default function DashboardPage() {
-  const [slack, setSlack] = useState<SlackData | null>(null);
   const [clickup, setClickUp] = useState<ClickUpData | null>(null);
   const [webwork, setWebwork] = useState<{ members: WebWorkMember[] } | null>(
     null,
@@ -256,17 +253,18 @@ export default function DashboardPage() {
   > | null>(null);
   const [loading, setLoading] = useState(true);
   const [team, setTeam] = useState<TeamMember[]>([]);
-  // Executive vs PM dashboard mode (admins only). Exec = high-level KPIs/OKRs;
-  // PM = operational task board + screenshots. Persisted per browser.
-  const [view, setView] = useState<"exec" | "pm">("exec");
+  // "Good morning" etc. in Pacific time; set after mount to avoid a hydration mismatch.
+  const [greeting, setGreeting] = useState("Welcome");
   useEffect(() => {
-    const v = localStorage.getItem("vcos-dash-view");
-    if (v === "pm" || v === "exec") setView(v);
+    const h = Number(
+      new Intl.DateTimeFormat("en-US", {
+        timeZone: "America/Los_Angeles",
+        hour: "numeric",
+        hourCycle: "h23",
+      }).format(new Date()),
+    );
+    setGreeting(h < 12 ? "Good morning" : h < 17 ? "Good afternoon" : "Good evening");
   }, []);
-  const chooseView = (v: "exec" | "pm") => {
-    setView(v);
-    localStorage.setItem("vcos-dash-view", v);
-  };
   const [daily, setDaily] = useState<
     { overdue_count: number; urgent_count: number; reports_filed: string[] }[]
   >([]);
@@ -356,10 +354,7 @@ export default function DashboardPage() {
       cachedClickUp?: Record<string, unknown> | null,
     ) => {
       setLoading(true);
-      const [s, c, w, sc] = await Promise.all([
-        fetch("/api/slack-stats", { cache: "no-store" })
-          .then((r) => r.json())
-          .catch(() => null),
+      const [c, w, sc] = await Promise.all([
         cachedClickUp
           ? Promise.resolve(cachedClickUp)
           : fetch("/api/clickup-tasks", { cache: "no-store" })
@@ -373,7 +368,6 @@ export default function DashboardPage() {
           .catch(() => null),
       ]);
       if (!cancelled.v) {
-        setSlack(s);
         setClickUp(c);
         setWebwork(w);
         setScreenshots(sc?.screenshots ?? null);
@@ -595,148 +589,248 @@ export default function DashboardPage() {
     .filter(Boolean)
     .join("\n");
 
+  const firstName = (me?.fullName ?? me?.username ?? "").split(" ")[0];
+  const myWw = myCuKey
+    ? webwork?.members?.find((m) => {
+        const u = m.username.toLowerCase();
+        const k = myCuKey.toLowerCase();
+        return u.includes(k) || k.includes(u);
+      })
+    : undefined;
+  const hoursThisWeek = isAdmin
+    ? Math.round(
+        (webwork?.members ?? []).reduce((sum, m) => sum + m.totalHours, 0),
+      )
+    : Math.round(myWw?.totalHours ?? 0);
+  const urgentCount = scopedClickUp?.urgent ?? 0;
+  const overduePct = scopedClickUp?.overduePercent ?? 0;
+  const busy = loading || reportsLoading;
+
+  const kpis: {
+    cls: string;
+    value: string | number;
+    label: string;
+    sub: string;
+    href: string;
+  }[] = [
+    {
+      cls: displayMissing > 0 ? "red" : "green",
+      value: busy ? "-" : `${displayFiled}/${displayTotal}`,
+      label: "Weekly reports filed",
+      sub: busy
+        ? ""
+        : displayMissing > 0
+          ? `${displayMissing} not submitted`
+          : displayPending > 0
+            ? `${displayPending} due Friday`
+            : "All in",
+      href: "/team?tab=filing",
+    },
+    {
+      cls: urgentCount > 0 ? "red" : "green",
+      value: loading ? "-" : urgentCount,
+      label: isAdmin ? "Urgent tasks" : "My urgent tasks",
+      sub: urgentCount > 0 ? "Need action today" : "Nothing urgent",
+      href: isAdmin ? "#priority" : "#tasks",
+    },
+    {
+      cls: overduePct > 50 ? "red" : overduePct > 20 ? "amber" : "green",
+      value: loading ? "-" : `${overduePct}%`,
+      label: isAdmin ? "Tasks overdue" : "My tasks overdue",
+      sub: loading
+        ? ""
+        : `${scopedClickUp?.overdue ?? 0} of ${scopedClickUp?.totalTasks ?? 0} tasks`,
+      href: "#tasks",
+    },
+    {
+      cls: "blue",
+      value: loading ? "-" : `${hoursThisWeek}h`,
+      label: isAdmin ? "Team hours this week" : "My hours this week",
+      sub: "From WebWork",
+      href: "/team?tab=hours",
+    },
+  ];
+
+  const quickLinks = [
+    { href: "/submit", t: "Submit my weekly report", s: "Due end of day Friday" },
+    { href: "/briefing", t: "Open the Briefing Room", s: "Monday and Thursday team meeting" },
+    { href: "/chatbot", t: "Ask VCoS-AI", s: "Find anything or build a report from live data" },
+    { href: "/team", t: "Team overview", s: "Reports, hours, people and decisions" },
+  ];
+
   return (
     <div>
-      {/* Header */}
-      <div className="flex items-center justify-between mt-6 mb-4">
-        <div>
-          <h1 className="font-display text-2xl tracking-widest">CEO COMMAND</h1>
-          <div className="flex items-center gap-1 mt-0.5 flex-wrap">
+      {/* Greeting */}
+      <section className="hero-band">
+        <div className="flex flex-wrap items-start justify-between gap-4">
+          <div className="min-w-0">
+            <div className="eyebrow">
+              {isAdmin ? "Command centre" : "My week"} · Week of{" "}
+              {selectedWeekLabel}
+            </div>
+            <h1 className="mt-2">
+              {greeting}
+              {firstName ? `, ${firstName}` : ""}
+            </h1>
+            <div className="hero-meta mt-3">
+              <span>
+                Reports filed{" "}
+                <b>{busy ? "-" : `${displayFiled} of ${displayTotal}`}</b>
+              </span>
+              <span>
+                Urgent tasks <b>{loading ? "-" : urgentCount}</b>
+              </span>
+              <StaleBadge
+                ageMinutes={(clickup as { _ageMinutes?: number })?._ageMinutes}
+                circuitOpen={
+                  (clickup as { _circuitOpen?: boolean })?._circuitOpen
+                }
+              />
+            </div>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
             <button
               onClick={() => setSelectedMonday((d) => shiftWeeks(d, -1))}
-              className="text-ink4 hover:text-ink text-lg w-7 h-7 flex items-center justify-center rounded hover:bg-sand3 transition-colors"
-              title="Previous week"
+              className="hero-btn"
+              aria-label="Previous week"
             >
-              ‹
-            </button>
-            <span className="text-xs text-ink4 px-1">
-              Week of {selectedWeekLabel}
-            </span>
-            <button
-              onClick={() => setSelectedMonday((d) => shiftWeeks(d, 1))}
-              disabled={isCurrentWeek}
-              className="text-ink4 hover:text-ink text-lg w-7 h-7 flex items-center justify-center rounded hover:bg-sand3 transition-colors disabled:opacity-30"
-              title="Next week"
-            >
-              ›
+              <FiChevronLeft />
             </button>
             {!isCurrentWeek && (
               <button
                 onClick={() =>
                   setSelectedMonday(getMostRecentMonday(new Date()))
                 }
-                className="text-xs text-accent hover:underline ml-1"
+                className="hero-btn"
               >
-                Current week
+                This week
               </button>
             )}
-            <StaleBadge
-              ageMinutes={(clickup as { _ageMinutes?: number })?._ageMinutes}
-              circuitOpen={
-                (clickup as { _circuitOpen?: boolean })?._circuitOpen
-              }
-            />
+            <button
+              onClick={() => setSelectedMonday((d) => shiftWeeks(d, 1))}
+              disabled={isCurrentWeek}
+              className="hero-btn"
+              aria-label="Next week"
+            >
+              <FiChevronRight />
+            </button>
+            {isAdmin && !loading && (
+              <ShareSlackButton label="Post brief to Slack" message={shareMsg} />
+            )}
           </div>
         </div>
-        <div className="flex items-center gap-2">
-          {isAdmin && (
-            <div className="flex rounded-lg border border-sand4 overflow-hidden text-xs font-semibold">
-              {(["exec", "pm"] as const).map((v) => (
-                <button
-                  key={v}
-                  onClick={() => chooseView(v)}
-                  className={`px-3 py-1.5 transition-colors ${view === v ? "bg-accent text-white" : "bg-sand text-ink3 hover:bg-sand3"}`}
-                >
-                  {v === "exec" ? "Executive" : "PM"}
-                </button>
-              ))}
-            </div>
-          )}
-          {!loading && (
-            <ShareSlackButton label="Post Brief" message={shareMsg} />
-          )}
-        </div>
+      </section>
+
+      {/* The four numbers that matter - each opens the detail */}
+      <div className="kpi-grid">
+        {kpis.map((k) => (
+          <Link key={k.label} href={k.href} className={`kpi ${k.cls}`}>
+            <span className={`kpi-value ${busy ? "animate-pulse" : ""}`}>
+              {k.value}
+            </span>
+            <span className="kpi-label">{k.label}</span>
+            {k.sub && <span className="kpi-sub">{k.sub}</span>}
+          </Link>
+        ))}
       </div>
 
-      {/* Tony - chatbot entry */}
-      <Link
-        href="/chatbot"
-        className="card mb-6 flex items-center gap-4 px-5 py-4 hover:border-accent hover:shadow-card-md transition-all group"
-      >
-        <div className="w-11 h-11 rounded-full bg-ink text-white flex items-center justify-center font-display text-base flex-shrink-0">
-          AI
-        </div>
-        <div className="flex-1 min-w-0">
-          <div className="text-sm font-bold text-ink group-hover:text-accent transition-colors">
-            VCoS-AI - your Virtual Chief of Staff
-          </div>
-          <div className="text-xs text-ink4 mt-0.5">
-            Ask anything, find info, and generate reports from live data -
-            download as PDF or Word. Team-wide reports are admin-only.
-          </div>
-        </div>
-        <span className="badge-accent flex-shrink-0">Open chat →</span>
-      </Link>
-
-      {/* Key metrics */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
-        {/* Reports filed */}
-        <div
-          className={`stat-tile ${loading || reportsLoading ? "animate-pulse" : ""}`}
-        >
-          <div
-            className={`stat-value ${!loading && displayMissing > 0 ? "text-danger" : "text-success"}`}
-          >
-            {loading || reportsLoading
-              ? "-"
-              : `${displayFiled}/${displayTotal}`}
-          </div>
-          <div className="stat-label">Reports Filed</div>
-          {!loading && !reportsLoading && (
-            <div className="stat-sub">
-              {(() => {
-                const lateCount = reportingMembers.filter(
-                  (m) => getMemberReportStatus(m.name) === "late",
-                ).length;
-                if (displayMissing > 0)
-                  return `${displayMissing} not submitted${lateCount > 0 ? ` · ${lateCount} late` : ""}`;
-                if (displayPending > 0)
-                  return `${displayPending} pending · due Friday`;
-                if (lateCount > 0)
-                  return `All filed · ${lateCount} submitted late`;
-                if (displayFiled > 0) return "All filed on time ✓";
-                return "-";
-              })()}
-            </div>
-          )}
-          {isAdmin && filedTrend.length > 1 && (
-            <div className="mt-2">
-              <Sparkline values={filedTrend} color="#16A34A" />
-            </div>
-          )}
-          {!loading && !reportsLoading && displayTotal > 0 && (
-            <div className="progress-track mt-2">
-              <div
-                className={`progress-fill ${displayMissing > 0 ? "bg-danger" : "bg-success"}`}
-                style={{
-                  width: `${Math.round((displayFiled / displayTotal) * 100)}%`,
-                }}
-              />
-            </div>
-          )}
-        </div>
-
-        {/* CRM donut */}
-        <div
-          className={`stat-tile overflow-hidden ${loading ? "animate-pulse" : ""}`}
-        >
-          <div className="stat-label mb-3">
-            {isAdmin ? "CRM Task Breakdown" : "My Task Breakdown"}
-          </div>
+      {/* Needs attention + quick actions */}
+      <div className="grid gap-5 lg:grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)] items-start mb-8">
+        <section className="panel">
+          <h2 className="panel-title">
+            Needs attention
+            {!loading && (
+              <span className={`count-pill ${actions.length ? "red" : "green"}`}>
+                {actions.length}
+              </span>
+            )}
+          </h2>
           {loading ? (
-            <div className="h-24 flex items-center justify-center text-ink4 text-sm">
-              Loading…
-            </div>
+            <p className="text-sm text-ink3 animate-pulse">Checking…</p>
+          ) : actions.length === 0 ? (
+            <p className="text-sm text-success-dark font-semibold">
+              All clear - nothing needs attention right now.
+            </p>
+          ) : (
+            actions.map((a, i) => (
+              <div key={i} className={`alert alert-${a.level} mb-0`}>
+                {a.text}
+              </div>
+            ))
+          )}
+        </section>
+        <section className="panel">
+          <h2 className="panel-title">Quick actions</h2>
+          {quickLinks.map((q) => (
+            <Link key={q.href} href={q.href} className="row-btn">
+              <span className="t">{q.t}</span>
+              <span className="text-accent font-bold">→</span>
+              <span className="s">{q.s}</span>
+            </Link>
+          ))}
+        </section>
+      </div>
+
+      {/* Priority tasks (admins) */}
+      {isAdmin && !loading && (
+        <div id="priority">
+          <PriorityTasks
+            urgent={clickup?.urgentDetails ?? []}
+            high={clickup?.highDetails ?? []}
+          />
+        </div>
+      )}
+
+      {/* Tasks */}
+      <div id="tasks" className="sechead">
+        <h2>{isAdmin ? "Team tasks" : "My tasks"}</h2>
+        <span className="count">
+          {isAdmin ? "Click a person to see their ClickUp tasks" : "From ClickUp"}
+        </span>
+      </div>
+      {!isAdmin && me && !myCuKey && (
+        <div className="empty mb-8">
+          Your login isn't linked to a team member yet, so there's nothing to show here. Ask an admin to link it in Team &amp; Users → Team Members.
+        </div>
+      )}
+        <div className="space-y-2 mb-8">
+          {(isAdmin
+            ? team
+            : team.filter((m) => me?.fullName && m.name === me.fullName)
+          ).map((member) => {
+            const wwMember = webwork?.members?.find((m) => {
+              const u = m.username.toLowerCase();
+              const k = member.cuKey.toLowerCase();
+              return u.includes(k) || k.includes(u);
+            });
+            return (
+              <MemberCard
+                key={member.name}
+                member={member}
+                stats={findStats(clickup?.assigneeStats, member.cuKey)}
+                tasks={findTasks(clickup?.tasksByAssignee, member.cuKey)}
+                filed={getMemberReportEntry(member.name) !== null}
+                loading={loading}
+                sparkline={wwMember?.byDay}
+                reportStatus={
+                  member.filesReport
+                    ? getMemberReportStatus(member.name)
+                    : undefined
+                }
+                avatar={findAvatar(clickup?.assigneeAvatars, member.cuKey)}
+              />
+            );
+          })}
+        </div>
+
+      {/* Task breakdown + OKRs */}
+      <div className="grid gap-5 lg:grid-cols-2 items-start mb-8">
+        <section className="panel">
+          <h2 className="panel-title">
+            {isAdmin ? "Task breakdown" : "My task breakdown"}
+          </h2>
+          {loading ? (
+            <p className="text-sm text-ink3 animate-pulse">Loading…</p>
           ) : scopedClickUp && scopedClickUp.totalTasks ? (
             <CrmDonut
               total={scopedClickUp.totalTasks}
@@ -745,357 +839,171 @@ export default function DashboardPage() {
               completed={scopedClickUp.completed ?? 0}
             />
           ) : (
-            <div className="text-sm text-ink4">No task data</div>
+            <p className="text-sm text-ink3">No task data</p>
           )}
-        </div>
-
-        {/* Urgent + overdue quick tiles */}
-        <div className="flex flex-col gap-3">
-          <div className={`stat-tile flex-1 ${loading ? "animate-pulse" : ""}`}>
-            <div
-              className={`stat-value ${!loading && (scopedClickUp?.urgent ?? 0) > 0 ? "text-danger" : "text-ink"}`}
-            >
-              {loading ? "-" : (scopedClickUp?.urgent ?? "-")}
+          {isAdmin && (filedTrend.length > 1 || overdueTrend.length > 1) && (
+            <div className="grid grid-cols-3 gap-3 pt-2 border-t border-sand4">
+              {[
+                { l: "Reports filed", v: filedTrend, c: "#1C7C54" },
+                { l: "Urgent", v: urgentTrend, c: "#B8322B" },
+                { l: "Overdue", v: overdueTrend, c: "#B7791F" },
+              ].map((t) => (
+                <div key={t.l}>
+                  <div className="text-xs font-semibold text-ink3 mb-1">
+                    {t.l} trend
+                  </div>
+                  <Sparkline values={t.v} color={t.c} height={22} />
+                </div>
+              ))}
             </div>
-            <div className="stat-label">Urgent Tasks</div>
-            <div className="stat-sub">
-              {isAdmin ? "Need immediate action" : "Assigned to you"}
-            </div>
-            {isAdmin && urgentTrend.length > 1 && (
-              <div className="mt-1">
-                <Sparkline values={urgentTrend} color="#DC2626" height={18} />
+          )}
+        </section>
+        <section className="panel">
+          <h2 className="panel-title">OKR pulse</h2>
+      <div className="card mb-0 px-5">
+        <OkrRings okrs={okrs} />
+        {isOwner && okrs.length > 0 && (
+          <div className="border-t border-sand3 pt-3 pb-2 space-y-2">
+            {okrs.map((o) => (
+              <div
+                key={o.id}
+                className="flex flex-wrap items-center gap-2 text-xs"
+              >
+                {editingOkr === o.id ? (
+                  <>
+                    <span className="w-28 font-semibold text-ink shrink-0 truncate">
+                      {o.label}
+                    </span>
+                    <input
+                      type="number"
+                      min={0}
+                      max={100}
+                      step={1}
+                      className="field-input w-16 text-right font-mono"
+                      value={okrDraft.pct}
+                      onChange={(e) =>
+                        setOkrDraft((d) => ({
+                          ...d,
+                          pct: Math.min(
+                            100,
+                            Math.max(0, parseInt(e.target.value) || 0),
+                          ),
+                        }))
+                      }
+                    />
+                    <span className="text-ink4">%</span>
+                    <input
+                      type="text"
+                      className="field-input flex-1 min-w-0"
+                      value={okrDraft.note}
+                      onChange={(e) =>
+                        setOkrDraft((d) => ({ ...d, note: e.target.value }))
+                      }
+                      placeholder="Note…"
+                    />
+                    <button
+                      className="btn-primary text-xs py-0.5 px-2 disabled:opacity-50"
+                      disabled={savingOkr}
+                      onClick={() => saveOkr(o.id)}
+                    >
+                      {savingOkr ? "…" : "Save"}
+                    </button>
+                    <button
+                      className="text-ink4 hover:text-ink px-1"
+                      onClick={() => setEditingOkr(null)}
+                    >
+                      ✕
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    <span className="w-28 font-semibold text-ink shrink-0 truncate">
+                      {o.label}
+                    </span>
+                    <span className="font-mono w-8 text-right">
+                      {o.pct}%
+                    </span>
+                    <span className="text-ink4 flex-1 truncate">
+                      {o.note}
+                    </span>
+                    <button
+                      className="text-ink4 hover:text-ink px-1"
+                      onClick={() => {
+                        setEditingOkr(o.id);
+                        setOkrDraft({ pct: o.pct, note: o.note ?? "" });
+                      }}
+                    >
+                      ✏
+                    </button>
+                  </>
+                )}
               </div>
-            )}
-          </div>
-          <div className={`stat-tile flex-1 ${loading ? "animate-pulse" : ""}`}>
-            <div
-              className={`stat-value ${!loading && (scopedClickUp?.overduePercent ?? 0) > 50 ? "text-danger" : "text-warning"}`}
-            >
-              {loading ? "-" : `${scopedClickUp?.overduePercent ?? "-"}%`}
-            </div>
-            <div className="stat-label">
-              {isAdmin ? "CRM Overdue" : "My Overdue"}
-            </div>
-            {!loading && scopedClickUp && (
-              <div className="stat-sub">
-                {scopedClickUp.overdue} of {scopedClickUp.totalTasks} tasks
-              </div>
-            )}
-            {isAdmin && overdueTrend.length > 1 && (
-              <div className="mt-1">
-                <Sparkline values={overdueTrend} color="#D97706" height={18} />
-              </div>
-            )}
-          </div>
-        </div>
-      </div>
-
-      {/* Actions required */}
-      <div className="slbl">Actions Required</div>
-      {loading ? (
-        <div className="alert alert-amber animate-pulse">
-          Loading live data…
-        </div>
-      ) : (
-        actions.map((a, i) => (
-          <div key={i} className={`alert alert-${a.level}`}>
-            {a.text}
-          </div>
-        ))
-      )}
-
-      {/* Team Assignment Board - operational (PM view); non-admins always see their own row */}
-      {(!isAdmin || view === "pm") && (
-        <>
-          <div className="slbl mt-6">
-            {isAdmin ? "Team Assignment Board" : "My Tasks"}
-          </div>
-          <p className="text-xs text-ink4 mb-3">
-            {isAdmin
-              ? "Click any team member to see their assigned tasks from ClickUp."
-              : "Your assigned tasks from ClickUp."}
-          </p>
-          <div className="space-y-2 mb-6">
-            {(isAdmin
-              ? team
-              : team.filter((m) => me?.fullName && m.name === me.fullName)
-            ).map((member) => {
-              const wwMember = webwork?.members?.find((m) => {
-                const u = m.username.toLowerCase();
-                const k = member.cuKey.toLowerCase();
-                return u.includes(k) || k.includes(u);
-              });
-              return (
-                <MemberCard
-                  key={member.name}
-                  member={member}
-                  stats={findStats(clickup?.assigneeStats, member.cuKey)}
-                  tasks={findTasks(clickup?.tasksByAssignee, member.cuKey)}
-                  filed={getMemberReportEntry(member.name) !== null}
-                  loading={loading}
-                  sparkline={wwMember?.byDay}
-                  reportStatus={
-                    member.filesReport
-                      ? getMemberReportStatus(member.name)
-                      : undefined
-                  }
-                  avatar={findAvatar(clickup?.assigneeAvatars, member.cuKey)}
-                />
-              );
-            })}
-          </div>
-        </>
-      )}
-
-      {/* Team Screenshots - operational (PM view) */}
-      {(!isAdmin || view === "pm") &&
-        screenshots &&
-        Object.values(screenshots).some((arr) => arr.length > 0) && (
-          <div className="mb-6">
-            <div className="slbl">Team Screenshots - Today</div>
-            <div className="card divide-y divide-sand3">
-              {team
-                .filter((m) => screenshots[m.cuKey]?.length > 0)
-                .map((member) => {
-                  const shots = screenshots[member.cuKey] ?? [];
-                  return (
-                    <div key={member.cuKey} className="px-4 py-3">
-                      <div className="flex items-center gap-2 mb-2">
-                        <span className="text-sm font-semibold">
-                          {member.name}
-                        </span>
-                        <span className="text-xs text-ink4">
-                          {shots.length} screenshot
-                          {shots.length !== 1 ? "s" : ""}
-                        </span>
-                        {shots[0]?.capturedAt &&
-                          shots[shots.length - 1]?.capturedAt && (
-                            <span className="text-xs text-ink4 hidden sm:inline">
-                              · {shots[0].capturedAt} –{" "}
-                              {shots[shots.length - 1].capturedAt}
-                            </span>
-                          )}
-                      </div>
-                      {/* Thumbnail strip - scrollable on mobile */}
-                      <div className="flex gap-2 overflow-x-auto pb-1">
-                        {shots.map((shot, i) => (
-                          <a
-                            key={i}
-                            href={shot.url}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="flex-shrink-0 group relative"
-                            title={shot.capturedAt ?? shot.filename}
-                          >
-                            <img
-                              src={shot.url}
-                              alt={shot.capturedAt ?? `Screenshot ${i + 1}`}
-                              className="w-20 h-14 sm:w-24 sm:h-16 object-cover rounded border border-sand3 group-hover:border-accent transition-colors"
-                              loading="lazy"
-                            />
-                            {shot.capturedAt && (
-                              <span className="absolute bottom-0 left-0 right-0 text-center text-[9px] bg-black/50 text-white rounded-b px-1 py-0.5">
-                                {shot.capturedAt}
-                              </span>
-                            )}
-                          </a>
-                        ))}
-                      </div>
-                    </div>
-                  );
-                })}
-            </div>
+            ))}
           </div>
         )}
+      </div>
+        </section>
+      </div>
 
-      {/* OKR Pulse - high-level (Exec view) */}
-      {(!isAdmin || view === "exec") && (
-        <>
-          <div className="slbl">OKR Pulse</div>
-          <div className="card mb-6 px-5">
-            <OkrRings okrs={okrs} />
-            {isOwner && okrs.length > 0 && (
-              <div className="border-t border-sand3 pt-3 pb-2 space-y-2">
-                {okrs.map((o) => (
-                  <div
-                    key={o.id}
-                    className="flex flex-wrap items-center gap-2 text-xs"
-                  >
-                    {editingOkr === o.id ? (
-                      <>
-                        <span className="w-28 font-semibold text-ink shrink-0 truncate">
-                          {o.label}
-                        </span>
-                        <input
-                          type="number"
-                          min={0}
-                          max={100}
-                          step={1}
-                          className="field-input w-16 text-right font-mono"
-                          value={okrDraft.pct}
-                          onChange={(e) =>
-                            setOkrDraft((d) => ({
-                              ...d,
-                              pct: Math.min(
-                                100,
-                                Math.max(0, parseInt(e.target.value) || 0),
-                              ),
-                            }))
-                          }
-                        />
-                        <span className="text-ink4">%</span>
-                        <input
-                          type="text"
-                          className="field-input flex-1 min-w-0"
-                          value={okrDraft.note}
-                          onChange={(e) =>
-                            setOkrDraft((d) => ({ ...d, note: e.target.value }))
-                          }
-                          placeholder="Note…"
-                        />
-                        <button
-                          className="btn-primary text-xs py-0.5 px-2 disabled:opacity-50"
-                          disabled={savingOkr}
-                          onClick={() => saveOkr(o.id)}
-                        >
-                          {savingOkr ? "…" : "Save"}
-                        </button>
-                        <button
-                          className="text-ink4 hover:text-ink px-1"
-                          onClick={() => setEditingOkr(null)}
-                        >
-                          ✕
-                        </button>
-                      </>
-                    ) : (
-                      <>
-                        <span className="w-28 font-semibold text-ink shrink-0 truncate">
-                          {o.label}
-                        </span>
-                        <span className="font-mono w-8 text-right">
-                          {o.pct}%
-                        </span>
-                        <span className="text-ink4 flex-1 truncate">
-                          {o.note}
-                        </span>
-                        <button
-                          className="text-ink4 hover:text-ink px-1"
-                          onClick={() => {
-                            setEditingOkr(o.id);
-                            setOkrDraft({ pct: o.pct, note: o.note ?? "" });
-                          }}
-                        >
-                          ✏
-                        </button>
-                      </>
-                    )}
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        </>
-      )}
-
-      {/* Weekly report submissions - who sent / who hasn't (managers see everyone) */}
-      {isAdmin && (
+      {/* Screenshots */}
+      {screenshots &&
+        Object.values(screenshots).some((arr) => arr.length > 0) && (
         <div className="mb-6">
-          <div className="flex items-center justify-between mb-1">
-            <div className="slbl mb-0">
-              Weekly Report Submissions - {selectedWeekLabel}
-            </div>
-            <span className="text-xs text-ink4">
-              {reportsLoading
-                ? "Loading…"
-                : `${reportingMembers.filter((m) => getMemberReportEntry(m.name)).length} of ${reportingMembers.length} submitted`}
-            </span>
-          </div>
+          <div className="slbl">Team Screenshots - Today</div>
           <div className="card divide-y divide-sand3">
-            {reportsLoading ? (
-              <div className="px-5 py-3">
-                <Spinner
-                  label="Loading submissions…"
-                  className="text-ink4 text-sm"
-                />
-              </div>
-            ) : reportingMembers.length === 0 ? (
-              <div className="px-4 py-3 text-sm text-ink4">
-                No reporting members configured.
-              </div>
-            ) : (
-              <>
-                {/* Submitted - with date & time */}
-                {reportingMembers.map((m) => {
-                  const rep = getMemberReportEntry(m.name);
-                  if (!rep) return null;
-                  const meta =
-                    SUBMIT_STATUS_META[
-                      classifySubmission(rep.created_at, selectedMonday)
-                    ];
-                  const when =
-                    new Date(rep.created_at).toLocaleString("en-US", {
-                      timeZone: "America/Los_Angeles",
-                      weekday: "short",
-                      month: "short",
-                      day: "numeric",
-                      hour: "numeric",
-                      minute: "2-digit",
-                    }) + " PT";
-                  return (
-                    <div
-                      key={m.name}
-                      className="flex items-center gap-3 px-5 py-3"
-                    >
-                      <span
-                        className={`w-6 h-6 rounded-full ${meta.dot} flex items-center justify-center flex-shrink-0`}
-                      >
-                        <FiCheck className="w-3.5 h-3.5" />
+            {team
+              .filter((m) => screenshots[m.cuKey]?.length > 0)
+              .map((member) => {
+                const shots = screenshots[member.cuKey] ?? [];
+                return (
+                  <div key={member.cuKey} className="px-4 py-3">
+                    <div className="flex items-center gap-2 mb-2">
+                      <span className="text-sm font-semibold">
+                        {member.name}
                       </span>
-                      <span className="text-sm font-semibold flex-1 min-w-0 truncate">
-                        {m.name}
+                      <span className="text-xs text-ink4">
+                        {shots.length} screenshot
+                        {shots.length !== 1 ? "s" : ""}
                       </span>
-                      <span className={meta.badge} title={meta.long}>
-                        {meta.label}
-                      </span>
-                      <span className="text-xs text-ink4 whitespace-nowrap">
-                        {when}
-                      </span>
+                      {shots[0]?.capturedAt &&
+                        shots[shots.length - 1]?.capturedAt && (
+                          <span className="text-xs text-ink4 hidden sm:inline">
+                            · {shots[0].capturedAt} –{" "}
+                            {shots[shots.length - 1].capturedAt}
+                          </span>
+                        )}
                     </div>
-                  );
-                })}
-                {/* Not yet filed - "Pending" before Friday, "Not submitted" only after */}
-                {reportingMembers
-                  .filter((m) => !getMemberReportEntry(m.name))
-                  .map((m) => {
-                    const overdue = getMemberReportStatus(m.name) === "missing";
-                    return (
-                      <div
-                        key={m.name}
-                        className="flex items-center gap-3 px-5 py-3"
-                      >
-                        <span
-                          className={`w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0 ${overdue ? "bg-danger-light text-danger" : "bg-sand3 text-ink4"}`}
+                    {/* Thumbnail strip - scrollable on mobile */}
+                    <div className="flex gap-2 overflow-x-auto pb-1">
+                      {shots.map((shot, i) => (
+                        <a
+                          key={i}
+                          href={shot.url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="flex-shrink-0 group relative"
+                          title={shot.capturedAt ?? shot.filename}
                         >
-                          {overdue ? (
-                            <FiX className="w-3.5 h-3.5" />
-                          ) : (
-                            <FiClock className="w-3.5 h-3.5" />
+                          <img
+                            src={shot.url}
+                            alt={shot.capturedAt ?? `Screenshot ${i + 1}`}
+                            className="w-20 h-14 sm:w-24 sm:h-16 object-cover rounded border border-sand3 group-hover:border-accent transition-colors"
+                            loading="lazy"
+                          />
+                          {shot.capturedAt && (
+                            <span className="absolute bottom-0 left-0 right-0 text-center text-[9px] bg-black/50 text-white rounded-b px-1 py-0.5">
+                              {shot.capturedAt}
+                            </span>
                           )}
-                        </span>
-                        <span className="text-sm font-semibold flex-1 min-w-0 truncate text-ink3">
-                          {m.name}
-                        </span>
-                        <span className={overdue ? "badge-red" : "badge"}>
-                          {overdue ? "Not submitted" : "Pending"}
-                        </span>
-                      </div>
-                    );
-                  })}
-              </>
-            )}
+                        </a>
+                      ))}
+                    </div>
+                  </div>
+                );
+              })}
           </div>
         </div>
-      )}
+        )}
     </div>
   );
 }

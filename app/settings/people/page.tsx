@@ -4,9 +4,9 @@
 // Users (login accounts) pages into one place with two tabs.
 import { useState } from "react";
 import TabBar from "@/components/TabBar";
-import TeamPanel from "@/app/settings/team/page";
-import UsersPanel from "@/app/settings/users/page";
-import RequestsPanel from "@/app/settings/requests/page";
+import TeamPanel from "@/components/settings/TeamPanel";
+import UsersPanel from "@/components/settings/UsersPanel";
+import RequestsPanel from "@/components/settings/RequestsPanel";
 
 const TABS = [
   { id: "team", label: "Team Members" },
@@ -18,8 +18,8 @@ export default function PeoplePage() {
   const [tab, setTab] = useState<(typeof TABS)[number]["id"]>("team");
   return (
     <div className="mt-6">
-      <h1 className="font-display text-xl tracking-widest mb-3">
-        TEAM &amp; USERS
+      <h1 className="font-display text-2xl font-extrabold tracking-tight mb-3">
+        Team &amp; Users
       </h1>
       <TabBar tabs={TABS} active={tab} onChange={setTab} />
       <div className={tab === "team" ? "" : "hidden"}>

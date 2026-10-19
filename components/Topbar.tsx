@@ -4,9 +4,9 @@ import { useEffect, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { useRefresh } from "./RefreshContext";
 import { useMe } from "@/hooks/useMe";
-import { RAMPRATE_LOGO_B64 } from "@/lib/logo";
 import { ANALYTICS_SITES, X_ACCOUNTS, LINKEDIN_ACCOUNTS } from "@/lib/constants";
 import { FiRefreshCw } from "react-icons/fi";
+import BrandMark from "./BrandMark";
 
 export default function Topbar() {
   const { me } = useMe();
@@ -105,16 +105,25 @@ export default function Topbar() {
   }, [router]);
 
   return (
-    <div className="bg-ink text-white h-16 flex items-center justify-between px-4 sm:px-6 sticky top-0 z-40 shadow-md">
+    <div
+      className="text-white h-16 flex items-center justify-between px-4 sm:px-6 sticky top-0 z-40"
+      style={{
+        background:
+          "radial-gradient(1200px 400px at 85% -20%, #2A4380 0, transparent 60%), linear-gradient(135deg, #0F1B33, #1C2E55)",
+      }}
+    >
+      {/* Gold accent line */}
+      <span
+        aria-hidden
+        className="absolute left-0 right-0 bottom-0 h-[3px]"
+        style={{
+          background: "linear-gradient(90deg, #C9A24B, #E9D18F 40%, #C9A24B)",
+        }}
+      />
       {/* Brand */}
       <div className="flex items-center gap-3 min-w-0">
-        <img
-          src={RAMPRATE_LOGO_B64}
-          alt="RampRate"
-          className="h-8 w-auto object-contain"
-          style={{ filter: "brightness(0) invert(1)" }}
-        />
-        <span className="hidden sm:block text-sm font-medium text-white/60 truncate">
+        <BrandMark />
+        <span className="font-display font-extrabold text-[19px] tracking-tight truncate">
           Visual Chief of Staff
         </span>
       </div>
@@ -122,15 +131,15 @@ export default function Topbar() {
       {/* Right side */}
       <div className="flex items-center gap-3 sm:gap-4 flex-shrink-0">
         {/* Date - hidden on mobile */}
-        <span className="hidden md:block text-sm text-white/60">{dateStr}</span>
+        <span className="hidden md:block text-sm text-on-navy-dim">{dateStr}</span>
 
         {/* Live indicator */}
         <div className="flex items-center gap-1.5">
           <span className="relative flex h-2 w-2">
-            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-500 opacity-75" />
-            <span className="relative inline-flex rounded-full h-2 w-2 bg-green-500" />
+            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-gold-light opacity-75" />
+            <span className="relative inline-flex rounded-full h-2 w-2 bg-gold" />
           </span>
-          <span className="hidden sm:block text-sm font-medium text-green-600">
+          <span className="hidden sm:block text-sm font-semibold text-gold-light">
             Live
           </span>
         </div>
@@ -139,7 +148,7 @@ export default function Topbar() {
         <button
           onClick={handleRefresh}
           disabled={refreshing}
-          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-white/20 text-sm font-medium text-white/80 hover:bg-white/10 hover:text-white transition-colors disabled:opacity-40"
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-[10px] border border-white/30 bg-white/10 text-sm font-semibold text-white hover:bg-white/20 transition-colors disabled:opacity-40"
           title="Refresh all data"
         >
           <FiRefreshCw
@@ -157,13 +166,13 @@ export default function Topbar() {
               <span className="text-sm font-semibold text-white">
                 {me.username}
               </span>
-              <span className="text-xs text-white/50 capitalize">
+              <span className="text-xs text-on-navy-dim capitalize">
                 {me.role}
               </span>
             </div>
             <button
               onClick={handleLogout}
-              className="px-3 py-1.5 rounded-lg border border-white/20 text-sm font-medium text-white/80 hover:bg-white/10 hover:text-white transition-colors"
+              className="px-3 py-1.5 rounded-[10px] border border-white/30 bg-white/10 text-sm font-semibold text-white hover:bg-white/20 transition-colors"
             >
               Sign out
             </button>

@@ -123,8 +123,8 @@ const QUESTIONS = [
 export default function MocharyMethodPage() {
   return (
     <div className="pb-10">
-      <h1 className="font-display text-xl tracking-widest mt-6 mb-1">
-        THE MOCHARY METHOD
+      <h1 className="font-display text-2xl font-extrabold tracking-tight mt-6 mb-1">
+        The Mochary Method
       </h1>
       <p className="text-xs text-ink4 mb-4">
         The operating system used by CEOs across the industry - adapted for how
@@ -209,7 +209,7 @@ export default function MocharyMethodPage() {
               Step 0{i + 1}
             </div>
             <div
-              className={`font-display text-sm tracking-wide mb-1 ${i === 2 ? "text-white" : "text-ink"}`}
+              className={`font-display text-sm font-extrabold mb-1 ${i === 2 ? "text-white" : "text-ink"}`}
             >
               {step.title}
             </div>
@@ -227,7 +227,7 @@ export default function MocharyMethodPage() {
         {QUESTIONS.map((item) => (
           <div key={item.q} className="card mb-0">
             <div className="card-body">
-              <div className="font-display text-sm tracking-wide text-accent mb-2">
+              <div className="font-display text-sm font-extrabold text-accent mb-2">
                 {item.q}
               </div>
               <p className="text-sm text-ink2 leading-relaxed">{item.a}</p>

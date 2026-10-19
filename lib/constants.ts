@@ -98,3 +98,7 @@ export const LINKEDIN_ACCOUNTS = [
 ] as const;
 
 export type LinkedInAccountId = (typeof LINKEDIN_ACCOUNTS)[number]["id"];
+
+// Briefing Room (CEO Command Centre). These VCoS usernames see the page
+// view-only, except that they can answer the team's questions.
+export const BRIEFING_VIEW_ONLY_USERNAMES = ["tony"];

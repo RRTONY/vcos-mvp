@@ -5,6 +5,8 @@ import Topbar from './Topbar'
 import NavTabs from './NavTabs'
 
 const AUTH_PATHS = ['/login', '/signup']
+// Pages that fill the whole viewport under the nav (no centred content column)
+const FULL_BLEED_PATHS = ['/briefing']
 
 export default function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname()
@@ -18,11 +20,21 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
     )
   }
 
+  if (FULL_BLEED_PATHS.some(p => pathname.startsWith(p))) {
+    return (
+      <div className="flex flex-col h-[100dvh]">
+        <Topbar />
+        <NavTabs />
+        <main className="flex-1 min-h-0">{children}</main>
+      </div>
+    )
+  }
+
   return (
     <>
       <Topbar />
       <NavTabs />
-      <main className="max-w-5xl mx-auto px-5 sm:px-8 lg:px-12 pb-16 pt-4">{children}</main>
+      <main className="max-w-[1240px] mx-auto px-4 sm:px-6 lg:px-8 pb-20 pt-4">{children}</main>
     </>
   )
 }

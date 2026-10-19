@@ -20,7 +20,7 @@ import {
 import SystemRow from "@/components/SystemRow";
 import Spinner from "@/components/Spinner";
 import TabBar from "@/components/TabBar";
-import KeysPanel from "@/app/settings/keys/page";
+import KeysPanel from "@/components/settings/KeysPanel";
 import { useRefresh } from "@/components/RefreshContext";
 import { useMe } from "@/hooks/useMe";
 import { CLICKUP_WORKSPACE_URL } from "@/lib/constants";
@@ -129,12 +129,6 @@ const ICONS: Record<string, IconType> = {
   "Manus/AI": FiCpu,
 };
 
-interface SlackKPIs {
-  totalMessages: number;
-  activeMembers: number;
-  channels: number;
-}
-
 const HEALTH_COLOR: Record<HealthRow["health"], string> = {
   ok: "bg-green-500",
   stale: "bg-amber-400",
@@ -163,7 +157,6 @@ export default function SystemsPage() {
   const [tab, setTab] = useState<(typeof SYSTEMS_TABS)[number]["id"]>("status");
   const [systems, setSystems] = useState<SystemStatus[]>(STATIC_SYSTEMS);
   const [lastChecked, setLastChecked] = useState("");
-  const [slackKPIs, setSlackKPIs] = useState<SlackKPIs | null>(null);
   const [cacheHealth, setCacheHealth] = useState<HealthRow[]>([]);
   const [refreshing, setRefreshing] = useState<string | null>(null);
   const { refreshKey } = useRefresh();
@@ -181,13 +174,10 @@ export default function SystemsPage() {
       fetch("/api/systems-status", { cache: "no-store" })
         .then((r) => r.json())
         .catch(() => null),
-      fetch("/api/slack-stats", { cache: "no-store" })
-        .then((r) => r.json())
-        .catch(() => null),
       fetch("/api/cache-health", { cache: "no-store" })
         .then((r) => r.json())
         .catch(() => null),
-    ]).then(([sysData, slackData, healthData]) => {
+    ]).then(([sysData, healthData]) => {
       if (sysData?.systems) {
         setSystems((prev) =>
           prev.map((s) => {
@@ -206,7 +196,6 @@ export default function SystemsPage() {
           }),
         );
       }
-      if (slackData?.slackStats) setSlackKPIs(slackData.slackStats);
       if (healthData?.health) setCacheHealth(healthData.health);
       setLastChecked(new Date().toLocaleTimeString());
     });
@@ -395,45 +384,6 @@ export default function SystemsPage() {
             </div>
           </div>
 
-          <div className="slbl">Communication KPIs</div>
-          <div className="card">
-            <div className="card-body">
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                {[
-                  {
-                    value: slackKPIs
-                      ? slackKPIs.totalMessages.toLocaleString()
-                      : "-",
-                    label: "Slack Messages",
-                    sub: "This week",
-                  },
-                  {
-                    value: slackKPIs ? slackKPIs.activeMembers : "-",
-                    label: "Active Members",
-                    sub: "Non-bot accounts",
-                  },
-                  {
-                    value: slackKPIs ? slackKPIs.channels : "-",
-                    label: "Channels",
-                    sub: "Public channels",
-                  },
-                ].map((stat) => (
-                  <div
-                    key={stat.label}
-                    className={`border border-sand3 p-3 ${!slackKPIs && stat.value === "-" ? "animate-pulse" : ""}`}
-                  >
-                    <div className="font-serif font-black text-2xl">
-                      {stat.value}
-                    </div>
-                    <div className="text-xs font-bold uppercase tracking-widest text-ink3 mt-0.5">
-                      {stat.label}
-                    </div>
-                    <div className="text-xs text-ink4 mt-0.5">{stat.sub}</div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </div>
         </>
       )}
     </div>

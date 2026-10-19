@@ -40,12 +40,10 @@ export default function SignupPage() {
   if (done) {
     return (
       <div className="w-full max-w-sm mx-auto px-4 text-center">
-        <div className="font-display text-3xl tracking-widest mb-1">
-          RAMPRATE
-        </div>
-        <div className="text-sm text-ink3 uppercase tracking-widest mb-8">
+        <div className="font-display text-3xl font-extrabold tracking-tight mb-1">
           Visual Chief of Staff
         </div>
+        <div className="mb-8" />
         <div className="card p-6">
           <div className="text-2xl mb-3">✅</div>
           <div className="font-semibold mb-2">Request submitted</div>
@@ -60,8 +58,8 @@ export default function SignupPage() {
   return (
     <div className="w-full max-w-sm mx-auto px-4">
       <div className="text-center mb-8">
-        <div className="font-display text-3xl tracking-widest mb-1">
-          RAMPRATE
+        <div className="font-display text-3xl font-extrabold tracking-tight mb-1">
+          Visual Chief of Staff
         </div>
         <div className="text-sm text-ink3 uppercase tracking-widest">
           Request Access

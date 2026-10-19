@@ -28,10 +28,10 @@ export default function TabBar<T extends string>({
         <button
           key={t.id}
           onClick={() => onChange(t.id)}
-          className={`px-4 py-2 text-sm font-semibold border-b-2 -mb-px transition-colors whitespace-nowrap ${
+          className={`px-4 pt-3 pb-2.5 text-[15px] border-b-[3px] -mb-px transition-colors whitespace-nowrap ${
             active === t.id
-              ? "border-accent text-accent"
-              : "border-transparent text-ink3 hover:text-ink"
+              ? "border-accent text-ink font-bold"
+              : "border-transparent text-ink3 font-semibold hover:text-ink"
           }`}
         >
           {t.label}

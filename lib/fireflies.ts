@@ -68,6 +68,7 @@ export async function buildFirefliesSnapshot() {
       id: t.id,
       title: t.title ?? 'Untitled meeting',
       date: t.date ? new Date(t.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '',
+      startedAt: t.date ? new Date(t.date).toISOString() : null,
       duration: t.duration ? `${Math.round(t.duration / 60)} min` : '',
       participants,
       teamParticipants,

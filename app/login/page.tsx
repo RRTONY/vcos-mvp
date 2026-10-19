@@ -2,7 +2,7 @@
 
 import { useState, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
-import { RAMPRATE_LOGO_B64 } from "@/lib/logo";
+import BrandMark from "@/components/BrandMark";
 
 function LoginForm() {
   const [username, setUsername] = useState("");
@@ -43,14 +43,10 @@ function LoginForm() {
     <div className="w-full max-w-sm">
       {/* Brand */}
       <div className="text-center mb-8">
-        <img
-          src={RAMPRATE_LOGO_B64}
-          alt="RampRate"
-          className="h-12 w-auto mx-auto mb-3 object-contain"
-        />
-        <div className="text-xs text-ink3 uppercase tracking-widest">
-          Visual Chief of Staff
+        <div className="flex justify-center mb-3">
+          <BrandMark size={48} />
         </div>
+        <h1 className="text-2xl font-extrabold">Visual Chief of Staff</h1>
       </div>
 
       {/* Form */}
@@ -104,7 +100,7 @@ function LoginForm() {
       </form>
 
       <p className="text-center text-xs text-ink4 mt-6">
-        Access restricted · RampRate / ImpactSoul
+        Access restricted to team members
       </p>
     </div>
   );

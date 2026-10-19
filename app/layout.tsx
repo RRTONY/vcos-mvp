@@ -5,8 +5,8 @@ import { ToastProvider } from '@/components/Toast'
 import { RefreshProvider } from '@/components/RefreshContext'
 
 export const metadata: Metadata = {
-  title: 'Visual Chief of Staff · RampRate / ImpactSoul',
-  description: 'Real-time command center for RampRate and ImpactSoul operations',
+  title: 'Visual Chief of Staff',
+  description: 'Real-time command centre for the leadership team',
   robots: { index: false, follow: false },
 }
 

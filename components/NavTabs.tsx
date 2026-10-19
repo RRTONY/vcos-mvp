@@ -6,21 +6,14 @@ import { useMe } from "@/hooks/useMe";
 
 const TABS = [
   { label: "Dashboard", href: "/" },
+  { label: "Briefing Room", href: "/briefing" },
+  { label: "Team", href: "/team" },
+  { label: "Weekly Report", href: "/submit" },
   { label: "VCoS-AI", href: "/chatbot" },
   { label: "Analytics", href: "/analytics" },
-  { label: "Reports", href: "/reports" },
-  { label: "Projects", href: "/projects" },
-  { label: "Weekly Report", href: "/submit" },
-  { label: "Team Meeting Prep", href: "/meeting-prep" },
-  { label: "Compliance", href: "/compliance" },
   { label: "Invoices", href: "/invoices" },
   { label: "BD Pipeline", href: "/bd" },
 ];
-
-const KICKOFF_TAB = { label: "Performance", href: "/kickoff" };
-const COMMIT_TAB = { label: "Commitments", href: "/commitments" };
-const STANDUP_TAB = { label: "Standup Log", href: "/standup" };
-const ESCALATION_TAB = { label: "Escalations", href: "/escalations" };
 
 const ADMIN_TABS = [{ label: "Team & Users", href: "/settings/people" }];
 
@@ -33,35 +26,32 @@ export default function NavTabs() {
   const { isAdmin } = useMe();
 
   const allTabs = isAdmin
-    ? [
-        ...TABS,
-        KICKOFF_TAB,
-        STANDUP_TAB,
-        ESCALATION_TAB,
-        COMMIT_TAB,
-        ...ADMIN_TABS,
-        SYSTEMS_TAB,
-      ]
+    ? [...TABS, ...ADMIN_TABS, SYSTEMS_TAB]
     : [...TABS, SYSTEMS_TAB];
 
   return (
-    <div className="flex border-b border-sand4 bg-sand overflow-x-auto sticky top-16 z-30">
+    <nav
+      className="flex gap-0.5 px-2 sm:px-4 border-b border-sand4 bg-sand2/95 backdrop-blur overflow-x-auto sticky top-16 z-30"
+      style={{ scrollbarWidth: "none" }}
+      aria-label="Sections"
+    >
       {allTabs.map((t) => {
         const active = t.href === "/" ? path === "/" : path.startsWith(t.href);
         return (
           <Link
             key={t.href}
             href={t.href}
-            className={`px-4 py-3.5 text-sm font-semibold whitespace-nowrap border-b-2 transition-colors ${
+            aria-current={active ? "page" : undefined}
+            className={`px-4 pt-[15px] pb-3 text-[15px] whitespace-nowrap border-b-[3px] transition-colors ${
               active
-                ? "border-accent text-accent"
-                : "border-transparent text-ink3 hover:text-ink hover:border-sand4"
+                ? "border-accent text-ink font-bold"
+                : "border-transparent text-ink3 font-semibold hover:text-ink"
             }`}
           >
             {t.label}
           </Link>
         );
       })}
-    </div>
+    </nav>
   );
 }

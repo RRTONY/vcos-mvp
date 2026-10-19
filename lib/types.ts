@@ -88,6 +88,7 @@ export interface Meeting {
   id: string;
   title: string;
   date: string;
+  startedAt?: string | null; // ISO; absent in snapshots cached before this field existed
   duration: string;
   participants: string[];
   teamParticipants: string[];
@@ -103,15 +104,4 @@ export interface Me {
   role: "owner" | "admin" | "user";
   fullName: string | null;
   filesReport: boolean;
-}
-
-export interface MeetingPrepRow {
-  id: string;
-  submitted_by: string;
-  meeting_date: string;
-  wins: string | null;
-  priorities: string | null;
-  blockers: string | null;
-  decisions: string | null;
-  fyis: string | null;
 }
