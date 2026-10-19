@@ -5,7 +5,6 @@ import { useParams } from "next/navigation";
 import Link from "next/link";
 import { useMe } from "@/hooks/useMe";
 import Avatar from "@/components/Avatar";
-import Spinner from "@/components/Spinner";
 import FormattedNotes from "@/components/FormattedNotes";
 import {
   classifySubmission,
@@ -36,6 +35,7 @@ interface ReportRow {
 
 const WEEKS = 8;
 import { getMondayOfWeekPT, shiftWeeks, weekStartISO } from "@/lib/week-utils";
+import { SkeletonRows } from "@/components/Skeleton";
 const mostRecentMonday = getMondayOfWeekPT;
 function fmtWeek(mon: Date): string {
   const fri = new Date(mon);
@@ -176,7 +176,7 @@ export default function ProfilePage() {
   if (loading)
     return (
       <div className="py-8">
-        <Spinner label="Loading profile…" className="text-ink4 text-sm" />
+        <SkeletonRows rows={4} />
       </div>
     );
   if (!member)

@@ -3,6 +3,7 @@
 import { useEffect, useState, useRef } from "react";
 import { useRefresh } from "@/components/RefreshContext";
 import { useMe } from "@/hooks/useMe";
+import { SkeletonRows } from "@/components/Skeleton";
 
 interface Invoice {
   id: string;
@@ -334,9 +335,7 @@ export default function InvoicesPage() {
       <div className="card">
         <div className="card-body p-0">
           {loading ? (
-            <div className="p-4 animate-pulse text-sm text-ink4">
-              Loading invoices…
-            </div>
+            <SkeletonRows rows={4} className="p-4" />
           ) : visibleActive.length === 0 ? (
             <div className="p-4 text-sm text-ink4">
               {pendingContractor
@@ -481,7 +480,7 @@ export default function InvoicesPage() {
       <div className="card">
         <div className="card-body p-0">
           {loading ? (
-            <div className="p-4 animate-pulse text-sm text-ink4">Loading…</div>
+            <SkeletonRows rows={3} className="p-4" />
           ) : visiblePaid.length === 0 ? (
             <div className="p-4 text-sm text-ink4">
               {hasFilter

@@ -3,7 +3,6 @@
 import { useEffect, useState } from "react";
 import { useMe } from "@/hooks/useMe";
 import Avatar from "@/components/Avatar";
-import Spinner from "@/components/Spinner";
 import FormattedNotes from "@/components/FormattedNotes";
 import TaskBuckets from "@/components/TaskBuckets";
 import PeopleAuditTable from "@/components/PeopleAuditTable";
@@ -17,6 +16,7 @@ import { isReportFrom } from "@/lib/report-match";
 import { bucketFor } from "@/lib/due-buckets";
 import { lookupByAssignee } from "@/lib/assignee-lookup";
 import type { ClickUpData } from "@/lib/types";
+import { SkeletonRows } from "@/components/Skeleton";
 
 function fmtWeek(mon: Date): string {
   const fri = new Date(mon);
@@ -160,7 +160,7 @@ export default function PeoplePanel() {
 
       {loading ? (
         <div className="py-6">
-          <Spinner label="Building the brief…" className="text-ink4 text-sm" />
+          <SkeletonRows rows={4} />
         </div>
       ) : tab === "recs" ? (
         <RecommendationsTab

@@ -3,9 +3,9 @@
 import { useEffect, useState } from 'react'
 import { useRefresh } from '@/components/RefreshContext'
 import Avatar from '@/components/Avatar'
-import Spinner from '@/components/Spinner'
 import StaleBadge from '@/components/StaleBadge'
 import type { ProjectBreakdown } from '@/lib/types'
+import { SkeletonRows } from "@/components/Skeleton";
 
 interface TeamRow {
   full_name: string; vcos_username: string | null; clickup_key: string | null; active: boolean
@@ -95,7 +95,7 @@ export default function ProjectsPanel() {
       </div>
 
       {loading ? (
-        <div className="py-6"><Spinner label="Loading projects…" className="text-ink4 text-sm" /></div>
+        <SkeletonRows rows={4} />
       ) : projects.length === 0 ? (
         <div className="card p-6 text-center text-sm text-ink4">{error ?? 'No WebWork activity logged this week.'}</div>
       ) : (

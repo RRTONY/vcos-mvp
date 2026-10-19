@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
+import { SkeletonRows } from "@/components/Skeleton";
 
 interface ApiKey {
   key_name: string
@@ -21,7 +22,7 @@ export default function KeysPanel() {
       .finally(() => setLoading(false))
   }, [])
 
-  if (loading) return <div className="text-ink4 text-sm pt-8">Loading…</div>
+  if (loading) return <SkeletonRows rows={4} className="pt-8" />
 
   return (
     <div className="pt-6 space-y-4">

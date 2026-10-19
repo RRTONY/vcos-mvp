@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useMe } from "@/hooks/useMe";
+import { SkeletonRows } from "@/components/Skeleton";
 
 interface TeamMember {
   id: string;
@@ -440,7 +441,7 @@ export default function TeamPanel() {
       )}
 
       {loading ? (
-        <div className="text-sm text-ink4 animate-pulse">Loading…</div>
+        <SkeletonRows rows={6} />
       ) : (
         <div className="card">
           <div className="card-body p-0 overflow-x-auto">

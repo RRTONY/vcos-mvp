@@ -281,6 +281,29 @@
     @apply w-full border border-sand4 rounded-[10px] px-3.5 py-2.5 text-base font-sans bg-sand text-ink
            focus:outline-none focus:ring-2 focus:ring-accent/20 focus:border-accent transition-colors;
   }
+  /* Dropdowns: replace the browser arrow (which sits flush against the edge)
+     with our own chevron, inset from the right. */
+  select.field-input,
+  select.hero-select {
+    appearance: none;
+    -webkit-appearance: none;
+    background-repeat: no-repeat;
+    background-position: right 14px center;
+    background-size: 16px 16px;
+    padding-right: 42px;
+    cursor: pointer;
+    text-overflow: ellipsis;
+  }
+  select.field-input {
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%235B6780' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
+  }
+  select.hero-select {
+    @apply bg-white/10 border border-white/30 text-white rounded-[10px] pl-3 py-2 text-sm max-w-full hover:bg-white/20 transition-colors;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23FFFFFF' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
+  }
+  select.hero-select option {
+    @apply text-ink;
+  }
   .field-label {
     @apply block text-sm font-semibold text-ink3 mb-1.5;
   }

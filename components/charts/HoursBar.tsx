@@ -15,7 +15,7 @@ function firstName(username: string) {
 }
 
 // Color tiers: dark→medium→light based on rank
-const BAR_COLORS = ['#4F46E5', '#818CF8', '#C7D2FE', '#E0E7FF']
+const BAR_COLORS = ['#2747C9', '#818CF8', '#C7D2FE', '#E0E7FF']
 
 export default function HoursBar({ members }: Props) {
   if (!members.length) return null

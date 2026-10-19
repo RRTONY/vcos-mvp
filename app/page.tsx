@@ -15,6 +15,7 @@ import {
 } from "@/lib/constants";
 import { FiChevronLeft, FiChevronRight } from "react-icons/fi";
 import PriorityTasks from "@/components/PriorityTasks";
+import OkrProgress, { type OKR } from "@/components/OkrProgress";
 import {
   reportState,
   type ReportState,
@@ -29,12 +30,6 @@ interface TeamMember {
   cuKey: string;
   role: string;
   filesReport: boolean;
-}
-interface OKR {
-  id: string;
-  label: string;
-  pct: number;
-  note: string;
 }
 interface WeeklyReportEntry {
   id: string;
@@ -51,10 +46,8 @@ import {
 const getMostRecentMonday = getMondayOfWeekPT;
 const fmtWeekLabel = fmtWeekRange;
 import dynamic from "next/dynamic";
+import Skeleton, { SkeletonRows } from "@/components/Skeleton";
 const CrmDonut = dynamic(() => import("@/components/charts/CrmDonut"), {
-  ssr: false,
-});
-const OkrRings = dynamic(() => import("@/components/charts/OkrRing"), {
   ssr: false,
 });
 const MemberSparkline = dynamic(
@@ -194,7 +187,7 @@ function MemberCard({
             <span className="hidden sm:block">
               <MemberSparkline
                 byDay={sparkline}
-                color={flow !== null && flow < 50 ? "#DC2626" : "#4F46E5"}
+                color={flow !== null && flow < 50 ? "#B8322B" : "#2747C9"}
               />
             </span>
           )}
@@ -269,12 +262,6 @@ export default function DashboardPage() {
     { overdue_count: number; urgent_count: number; reports_filed: string[] }[]
   >([]);
   const [okrs, setOkrs] = useState<OKR[]>([]);
-  const [editingOkr, setEditingOkr] = useState<string | null>(null);
-  const [okrDraft, setOkrDraft] = useState<{ pct: number; note: string }>({
-    pct: 0,
-    note: "",
-  });
-  const [savingOkr, setSavingOkr] = useState(false);
   const { refreshKey, freshClickUp } = useRefresh();
   const prevKey = useRef(refreshKey);
   const { isOwner, isAdmin, me } = useMe();
@@ -331,22 +318,18 @@ export default function DashboardPage() {
       .catch(() => {});
   }, []);
 
-  async function saveOkr(id: string) {
-    setSavingOkr(true);
+  async function saveOkr(id: string, pct: number, note: string) {
     const res = await fetch("/api/okrs", {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ id, ...okrDraft }),
+      body: JSON.stringify({ id, pct, note }),
     });
-    if (res.ok) {
-      const updated = await res.json();
-      setOkrs((prev) =>
-        prev.map((o) => (o.id === id ? { ...o, ...updated } : o)),
-      );
-      setEditingOkr(null);
-    }
-    setSavingOkr(false);
+    if (!res.ok) return false;
+    const updated = await res.json();
+    setOkrs((prev) => prev.map((o) => (o.id === id ? { ...o, ...updated } : o)));
+    return true;
   }
+
 
   const load = useCallback(
     async (
@@ -746,7 +729,7 @@ export default function DashboardPage() {
             )}
           </h2>
           {loading ? (
-            <p className="text-sm text-ink3 animate-pulse">Checking…</p>
+            <SkeletonRows rows={2} />
           ) : actions.length === 0 ? (
             <p className="text-sm text-success-dark font-semibold">
               All clear - nothing needs attention right now.
@@ -830,7 +813,7 @@ export default function DashboardPage() {
             {isAdmin ? "Task breakdown" : "My task breakdown"}
           </h2>
           {loading ? (
-            <p className="text-sm text-ink3 animate-pulse">Loading…</p>
+            <Skeleton className="h-28 w-full rounded-xl" />
           ) : scopedClickUp && scopedClickUp.totalTasks ? (
             <CrmDonut
               total={scopedClickUp.totalTasks}
@@ -859,89 +842,8 @@ export default function DashboardPage() {
           )}
         </section>
         <section className="panel">
-          <h2 className="panel-title">OKR pulse</h2>
-      <div className="card mb-0 px-5">
-        <OkrRings okrs={okrs} />
-        {isOwner && okrs.length > 0 && (
-          <div className="border-t border-sand3 pt-3 pb-2 space-y-2">
-            {okrs.map((o) => (
-              <div
-                key={o.id}
-                className="flex flex-wrap items-center gap-2 text-xs"
-              >
-                {editingOkr === o.id ? (
-                  <>
-                    <span className="w-28 font-semibold text-ink shrink-0 truncate">
-                      {o.label}
-                    </span>
-                    <input
-                      type="number"
-                      min={0}
-                      max={100}
-                      step={1}
-                      className="field-input w-16 text-right font-mono"
-                      value={okrDraft.pct}
-                      onChange={(e) =>
-                        setOkrDraft((d) => ({
-                          ...d,
-                          pct: Math.min(
-                            100,
-                            Math.max(0, parseInt(e.target.value) || 0),
-                          ),
-                        }))
-                      }
-                    />
-                    <span className="text-ink4">%</span>
-                    <input
-                      type="text"
-                      className="field-input flex-1 min-w-0"
-                      value={okrDraft.note}
-                      onChange={(e) =>
-                        setOkrDraft((d) => ({ ...d, note: e.target.value }))
-                      }
-                      placeholder="Note…"
-                    />
-                    <button
-                      className="btn-primary text-xs py-0.5 px-2 disabled:opacity-50"
-                      disabled={savingOkr}
-                      onClick={() => saveOkr(o.id)}
-                    >
-                      {savingOkr ? "…" : "Save"}
-                    </button>
-                    <button
-                      className="text-ink4 hover:text-ink px-1"
-                      onClick={() => setEditingOkr(null)}
-                    >
-                      ✕
-                    </button>
-                  </>
-                ) : (
-                  <>
-                    <span className="w-28 font-semibold text-ink shrink-0 truncate">
-                      {o.label}
-                    </span>
-                    <span className="font-mono w-8 text-right">
-                      {o.pct}%
-                    </span>
-                    <span className="text-ink4 flex-1 truncate">
-                      {o.note}
-                    </span>
-                    <button
-                      className="text-ink4 hover:text-ink px-1"
-                      onClick={() => {
-                        setEditingOkr(o.id);
-                        setOkrDraft({ pct: o.pct, note: o.note ?? "" });
-                      }}
-                    >
-                      ✏
-                    </button>
-                  </>
-                )}
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
+          <h2 className="panel-title">OKR progress</h2>
+          <OkrProgress okrs={okrs} canEdit={isOwner} onSave={saveOkr} />
         </section>
       </div>
 

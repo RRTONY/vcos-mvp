@@ -2,8 +2,8 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useMe } from "@/hooks/useMe";
-import Spinner from "@/components/Spinner";
 import { FiCheckSquare, FiSquare, FiPlus } from "react-icons/fi";
+import { SkeletonRows } from "@/components/Skeleton";
 
 interface Commitment {
   id: string;
@@ -178,7 +178,7 @@ export default function DecisionsPanel() {
 
       {loading ? (
         <div className="py-6">
-          <Spinner label="Loading…" className="text-ink4 text-sm" />
+          <SkeletonRows rows={4} />
         </div>
       ) : shown.length === 0 ? (
         <div className="card p-6 text-center text-sm text-ink4">

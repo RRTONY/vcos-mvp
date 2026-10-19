@@ -2,8 +2,8 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { useMe } from "@/hooks/useMe";
-import Spinner from "@/components/Spinner";
 import { FiRefreshCw } from "react-icons/fi";
+import { SkeletonRows } from "@/components/Skeleton";
 
 interface DailyRow {
   report_date: string;
@@ -74,7 +74,7 @@ export default function DailyLogPanel() {
 
       {loading ? (
         <div className="py-6">
-          <Spinner label="Loading history…" className="text-ink4 text-sm" />
+          <SkeletonRows rows={4} />
         </div>
       ) : rows.length === 0 ? (
         <div className="card p-6 text-center text-sm text-ink4">

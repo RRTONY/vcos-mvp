@@ -3,6 +3,9 @@
 export interface TabBarItem<T extends string> {
   id: T;
   label: string;
+  /** Optional count badge; `alert` shows it in red. */
+  count?: number | null;
+  alert?: boolean;
 }
 
 /**
@@ -35,6 +38,19 @@ export default function TabBar<T extends string>({
           }`}
         >
           {t.label}
+          {t.count != null && (
+            <span
+              className={`ml-2 text-xs font-bold px-2 py-px rounded-full ${
+                t.alert
+                  ? "bg-danger-light text-danger-dark"
+                  : active === t.id
+                    ? "bg-accent-light text-accent-dark"
+                    : "bg-sand3 text-slate-dark"
+              }`}
+            >
+              {t.count}
+            </span>
+          )}
         </button>
       ))}
       {right && (

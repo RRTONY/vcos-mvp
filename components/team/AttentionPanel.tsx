@@ -2,7 +2,6 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useRefresh } from "@/components/RefreshContext";
-import Spinner from "@/components/Spinner";
 import { ShareSlackButton } from "@/components/ShareButtons";
 import { reportState } from "@/lib/report-status";
 import { DEAL_COLD_DAYS } from "@/lib/constants";
@@ -55,6 +54,7 @@ const SEV_META: Record<
 };
 
 import { getMondayOfWeekPT, weekStartISO } from "@/lib/week-utils";
+import { SkeletonRows } from "@/components/Skeleton";
 const mostRecentMonday = getMondayOfWeekPT;
 const daysSince = (d: string) =>
   Math.floor((Date.now() - new Date(d).getTime()) / 86400000);
@@ -198,7 +198,7 @@ export default function AttentionPanel() {
 
       {loading ? (
         <div className="py-6">
-          <Spinner label="Scanning…" className="text-ink4 text-sm" />
+          <SkeletonRows rows={4} />
         </div>
       ) : escalations.length === 0 ? (
         <div className="alert alert-green">

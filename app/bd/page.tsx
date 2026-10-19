@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { useMe } from "@/hooks/useMe";
 import { DEAL_COLD_DAYS, DEAL_STUCK_DAYS } from "@/lib/constants";
+import { SkeletonRows } from "@/components/Skeleton";
 
 // ─── Types ─────────────────────────────────────────────────────────────────
 
@@ -245,7 +246,7 @@ function ActivityLog({ dealId, canAdd }: { dealId: string; canAdd: boolean }) {
 
       {/* Log entries */}
       {loading ? (
-        <div className="text-[10px] text-ink4 animate-pulse">Loading…</div>
+        <SkeletonRows rows={2} />
       ) : activities.length === 0 ? (
         <div className="text-[10px] text-ink4">No activity yet.</div>
       ) : (

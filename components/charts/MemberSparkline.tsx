@@ -7,7 +7,7 @@ interface Props {
   color?: string
 }
 
-export default function MemberSparkline({ byDay, color = '#4F46E5' }: Props) {
+export default function MemberSparkline({ byDay, color = '#2747C9' }: Props) {
   if (!byDay || byDay.length === 0) return null
 
   const data = byDay.map((d) => ({

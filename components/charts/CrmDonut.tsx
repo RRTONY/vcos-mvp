@@ -10,10 +10,10 @@ interface Props {
 }
 
 const COLORS = {
-  onTrack:  '#4F46E5', // accent blue
-  overdue:  '#DC2626', // danger red
-  urgent:   '#D97706', // warning amber
-  completed:'#16A34A', // success green
+  onTrack:  '#2747C9', // accent blue
+  overdue:  '#B8322B', // danger red
+  urgent:   '#B7791F', // warning amber
+  completed:'#1C7C54', // success green
 }
 
 export default function CrmDonut({ total, overdue, urgent, completed }: Props) {

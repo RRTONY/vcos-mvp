@@ -5,7 +5,6 @@
 // Decisions & Commitments pages (old URLs redirect here, see next.config.js).
 import { useEffect, useState } from "react";
 import TabBar from "@/components/TabBar";
-import Spinner from "@/components/Spinner";
 import SubTabs from "@/components/SubTabs";
 import { useMe } from "@/hooks/useMe";
 import AttentionPanel from "@/components/team/AttentionPanel";
@@ -15,6 +14,7 @@ import PeoplePanel from "@/components/team/PeoplePanel";
 import DailyLogPanel from "@/components/team/DailyLogPanel";
 import DecisionsPanel from "@/components/team/DecisionsPanel";
 import ProjectsPanel from "@/components/team/ProjectsPanel";
+import { SkeletonRows } from "@/components/Skeleton";
 
 const TABS = [
   {
@@ -116,7 +116,7 @@ export default function TeamPage() {
 
       {!current ? (
         <div className="py-6">
-          <Spinner label="Loading…" className="text-ink4 text-sm" />
+          <SkeletonRows rows={4} />
         </div>
       ) : (
         <>

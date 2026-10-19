@@ -7,7 +7,7 @@ interface Props {
   color?: string
 }
 
-export default function AudienceTrendChart({ data, color = '#4F46E5' }: Props) {
+export default function AudienceTrendChart({ data, color = '#2747C9' }: Props) {
   if (!data || data.length === 0) return null
 
   const points = data.map((d) => ({

@@ -48,7 +48,7 @@ export default function Avatar({
   return (
     <div
       className={`${className} rounded-full flex items-center justify-center font-bold flex-shrink-0 text-white`}
-      style={{ background: color || "#4F46E5" }}
+      style={{ background: color || "#2747C9" }}
       aria-label={name}
     >
       {label}

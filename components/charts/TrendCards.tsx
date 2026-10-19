@@ -9,12 +9,12 @@ interface Props {
 
 function avatar(username: string, index: number) {
   const colors = [
-    "#4F46E5",
+    "#2747C9",
     "#7C3AED",
     "#0891B2",
     "#059669",
-    "#D97706",
-    "#DC2626",
+    "#B7791F",
+    "#B8322B",
     "#6B7280",
   ];
   return {

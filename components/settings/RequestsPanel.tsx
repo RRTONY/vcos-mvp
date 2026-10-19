@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { SkeletonRows } from "@/components/Skeleton";
 
 interface Request {
   id: string;
@@ -63,7 +64,7 @@ export default function RequestsPanel() {
   const pending = requests.filter((r) => r.status === "pending");
   const past = requests.filter((r) => r.status !== "pending");
 
-  if (loading) return <div className="text-ink4 text-sm pt-8">Loading…</div>;
+  if (loading) return <SkeletonRows rows={3} className="pt-8" />;
 
   return (
     <div className="pt-6 space-y-4">

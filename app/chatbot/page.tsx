@@ -27,6 +27,7 @@ import {
 } from "@/lib/export-doc";
 import Markdown from "@/components/Markdown";
 import { REPORT_TEMPLATES as SUGGESTIONS } from "@/lib/report-templates";
+import { SkeletonRows } from "@/components/Skeleton";
 
 interface Msg {
   id: string;
@@ -231,7 +232,7 @@ function GoalsModal({ onClose }: { onClose: () => void }) {
         these and flags when work drifts.
       </p>
       {loading ? (
-        <div className="text-sm text-ink4">Loading…</div>
+        <SkeletonRows rows={3} />
       ) : (
         <>
           <textarea
@@ -299,7 +300,7 @@ function CommitmentsModal({ onClose }: { onClose: () => void }) {
         one off when it&apos;s handled.
       </p>
       {loading ? (
-        <div className="text-sm text-ink4">Loading…</div>
+        <SkeletonRows rows={3} />
       ) : items.length === 0 ? (
         <div className="text-sm text-ink4">
           Nothing logged yet. Make a commitment in chat (e.g. &ldquo;I&apos;ll

@@ -2,7 +2,7 @@
 
 // Tiny dependency-free SVG sparkline for KPI trend tiles.
 export default function Sparkline({
-  values, color = '#4F46E5', width = 96, height = 24, fill = true,
+  values, color = '#2747C9', width = 96, height = 24, fill = true,
 }: { values: number[]; color?: string; width?: number; height?: number; fill?: boolean }) {
   const pts = values.filter(v => Number.isFinite(v))
   if (pts.length < 2) return null

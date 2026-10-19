@@ -3,6 +3,7 @@
 import { useState, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 import BrandMark from "@/components/BrandMark";
+import { SkeletonRows } from "@/components/Skeleton";
 
 function LoginForm() {
   const [username, setUsername] = useState("");
@@ -108,7 +109,7 @@ function LoginForm() {
 
 export default function LoginPage() {
   return (
-    <Suspense fallback={<div className="text-ink4 text-sm">Loading…</div>}>
+    <Suspense fallback={<SkeletonRows rows={2} className="w-full max-w-sm" />}>
       <LoginForm />
     </Suspense>
   );

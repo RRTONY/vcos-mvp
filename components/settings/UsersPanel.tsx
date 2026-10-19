@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { SkeletonRows } from "@/components/Skeleton";
 
 interface User {
   id: string;
@@ -104,7 +105,7 @@ export default function UsersPanel() {
   }
 
   if (loading)
-    return <div className="text-ink4 text-sm pt-8">Loading users…</div>;
+    return <SkeletonRows rows={5} className="pt-8" />;
   if (error) return <div className="alert alert-red mt-8">{error}</div>;
 
   return (

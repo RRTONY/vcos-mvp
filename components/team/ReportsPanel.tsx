@@ -8,7 +8,6 @@ import {
   FiCheck,
   FiAlertTriangle,
 } from "react-icons/fi";
-import Spinner from "@/components/Spinner";
 import {
   classifySubmission,
   SUBMIT_STATUS_META,
@@ -53,6 +52,7 @@ import {
   fmtWeekRange,
   weekStartISO,
 } from "@/lib/week-utils";
+import Skeleton, { SkeletonRows } from "@/components/Skeleton";
 const getMostRecentMonday = getMondayOfWeekPT;
 const fmtWeekLabel = fmtWeekRange;
 
@@ -501,9 +501,11 @@ export default function ReportsPanel({
                       {isCurrentWeek ? "This Week" : fmtWeekLabel(weekMon)}
                     </div>
                     <div className="text-xs text-ink3">
-                      {weekReportsLoading
-                        ? "Loading…"
-                        : `${weekReports.length} of ${reportMembers.length} submitted`}
+                      {weekReportsLoading ? (
+                        <Skeleton className="h-3 w-24 mt-1" />
+                      ) : (
+                        `${weekReports.length} of ${reportMembers.length} submitted`
+                      )}
                     </div>
                   </div>
                   <div className="card-body p-3">
@@ -600,10 +602,7 @@ export default function ReportsPanel({
               {/* Report cards */}
               {weekReportsLoading ? (
                 <div className="py-4">
-                  <Spinner
-                    label="Loading reports…"
-                    className="text-ink4 text-sm"
-                  />
+                  <SkeletonRows rows={4} />
                 </div>
               ) : sorted.length === 0 ? (
                 isAdmin ? (
@@ -675,9 +674,7 @@ export default function ReportsPanel({
               </div>
 
               {webworkLoading ? (
-                <div className="text-ink4 text-sm animate-pulse">
-                  Loading WebWork hours…
-                </div>
+                <SkeletonRows rows={5} />
               ) : !webworkData || !webworkData.members ? (
                 <div className="card p-6 text-center text-ink4 text-sm">
                   {webworkData?.error ??
@@ -737,11 +734,11 @@ export default function ReportsPanel({
                             style={{
                               background:
                                 i === 0
-                                  ? "#4F46E5"
+                                  ? "#2747C9"
                                   : i === 1
                                     ? "#818CF8"
                                     : "#C7D2FE",
-                              color: i < 2 ? "#fff" : "#4F46E5",
+                              color: i < 2 ? "#fff" : "#2747C9",
                             }}
                           >
                             {m.username[0].toUpperCase()}
@@ -765,7 +762,7 @@ export default function ReportsPanel({
                                   width: `${Math.min(100, (m.totalHours / 40) * 100)}%`,
                                   background:
                                     i === 0
-                                      ? "#4F46E5"
+                                      ? "#2747C9"
                                       : i === 1
                                         ? "#818CF8"
                                         : "#C7D2FE",

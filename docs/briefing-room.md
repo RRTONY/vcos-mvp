@@ -6,15 +6,16 @@ CEO Command Centre for the Monday and Thursday team meetings, at `/briefing`.
 
 | Piece | File |
 |---|---|
-| Page (handoff build, markup and CSS unchanged) | `public/briefing-room.html` |
-| Adapter: replaces the Artifact `db` / `user` with VCoS | `public/briefing-room-adapter.js` |
-| VCoS route (frames the page under the nav) | `app/briefing/page.tsx` |
+| Page (native React, VCoS design system) | `app/briefing/page.tsx` |
+| Tabs and detail panel | `components/briefing/*` |
+| Data loading, 60 s refresh, saves | `hooks/useBriefing.ts` |
+| Status, ordering, "what changed" logic | `lib/briefing-view.ts` |
 | Data API | `app/api/briefing/route.ts` |
 | Store + permission rules | `lib/briefing.ts` |
 | Table | `scripts/briefing-room-schema.sql` (`briefing_docs`) |
 | One-time import from the Artifact export | `scripts/briefing-import.mjs` |
 
-The page refreshes every 60 seconds, when its tab regains focus, and right after each save.
+The page refreshes every 60 seconds, when the browser tab regains focus, and right after each save.
 
 ## Who can do what
 
