@@ -9,6 +9,7 @@
 //   POST { op: "add", collection, data } → { id }
 //   POST { op: "delete", collection, id }
 import { NextRequest, NextResponse } from "next/server";
+import { isManager } from "@/lib/roles";
 import {
   actorFromSession,
   attendanceFor,
@@ -50,7 +51,7 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({
       canWrite: actor.kind !== "viewer",
       canAnswer: true,
-      isAdmin: role === "admin" || role === "owner",
+      isAdmin: isManager(role),
       name: actor.name,
     });
   }

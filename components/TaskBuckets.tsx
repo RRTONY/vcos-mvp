@@ -4,24 +4,10 @@ import { useState } from "react";
 import { List, type RowComponentProps } from "react-window";
 import type { ClickUpStatus, Task } from "@/lib/types";
 import { bucketFor, DUE_BUCKET_META, type DueBucket } from "@/lib/due-buckets";
+import { fetchListStatuses } from "@/lib/list-statuses";
 
 const ROW = 52;
 const MAX_H = 360;
-
-// Per-list status options, fetched once and shared across every row on the
-// same list (ClickUp statuses are custom per-list, not global).
-const listStatusCache = new Map<string, Promise<ClickUpStatus[]>>();
-function fetchListStatuses(listId: string) {
-  let promise = listStatusCache.get(listId);
-  if (!promise) {
-    promise = fetch(`/api/clickup-tasks/statuses?listId=${listId}`)
-      .then((r) => r.json())
-      .then((d) => (d.statuses ?? []) as ClickUpStatus[])
-      .catch(() => []);
-    listStatusCache.set(listId, promise);
-  }
-  return promise;
-}
 
 type StatusChangeHandler = (
   taskId: string,

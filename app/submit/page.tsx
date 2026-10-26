@@ -4,19 +4,17 @@ import { useState, useRef, useEffect, useMemo } from "react";
 import Link from "next/link";
 import { useToast } from "@/components/Toast";
 import { useMe } from "@/hooks/useMe";
-import { FiCheck } from "react-icons/fi";
+import { useRefresh } from "@/components/RefreshContext";
+import { FiCheck, FiExternalLink } from "react-icons/fi";
+import TaskDetailModal from "@/components/TaskDetailModal";
 import Spinner from "@/components/Spinner";
 import WeekCalendar from "@/components/WeekCalendar";
 import RichTextEditor from "@/components/RichTextEditor";
 import { bucketFor } from "@/lib/due-buckets";
-import {
-  openTasksFor,
-  dueDateTasksOnly,
-  TASK_STATUS_LABELS,
-  type TaskReviewStatus,
-} from "@/lib/open-tasks";
+import { dueDateTasksOnly } from "@/lib/open-tasks";
+import { fetchListStatuses } from "@/lib/list-statuses";
 import { htmlToSlackMrkdwn } from "@/lib/slack-format";
-import type { ClickUpData } from "@/lib/types";
+import type { ClickUpStatus, Task } from "@/lib/types";
 
 interface AiAnalysis {
   summary: string;
@@ -153,39 +151,79 @@ export default function SubmitPage() {
   // ── "Your Open Tasks" - always scoped to whoever the report is being filed
   // for (yourself, or the admin's current dropdown pick). Never shows another
   // team member's tasks alongside it.
-  const [clickupData, setClickUpData] = useState<ClickUpData | null>(null);
-  const [teamRows, setTeamRows] = useState<
-    Array<{ full_name: string; clickup_key: string | null }>
-  >([]);
   const [selectedName, setSelectedName] = useState<string>("");
-
-  useEffect(() => {
-    Promise.all([
-      fetch("/api/clickup-tasks", { cache: "no-store" })
-        .then((r) => r.json())
-        .catch(() => null),
-      fetch("/api/team", { cache: "no-store" })
-        .then((r) => r.json())
-        .catch(() => []),
-    ]).then(([cu, t]) => {
-      setClickUpData(cu);
-      setTeamRows(Array.isArray(t) ? t : []);
-    });
-  }, []);
 
   useEffect(() => {
     if (lockedName) setSelectedName(lockedName);
   }, [lockedName]);
 
-  const myOpenTasks = useMemo(() => {
-    if (!selectedName || !clickupData?.tasksByAssignee) return [];
-    const member = teamRows.find((m) => m.full_name === selectedName);
-    return openTasksFor(
-      clickupData.tasksByAssignee,
-      member?.clickup_key,
-      selectedName.split(" ")[0],
+  // Fetched live from ClickUp every time the person changes (not from the
+  // cached snapshot), so the report always reviews what ClickUp has now - and
+  // quietly re-fetched whenever ClickUp reports a change while the form is
+  // open (liveClickUp), without a spinner or losing any typed notes.
+  const { liveClickUp } = useRefresh();
+  const [myOpenTasks, setMyOpenTasks] = useState<Task[]>([]);
+  const [tasksLoading, setTasksLoading] = useState(false);
+  const [tasksLive, setTasksLive] = useState(true);
+  const loadedName = useRef("");
+  useEffect(() => {
+    const nameChanged = loadedName.current !== selectedName;
+    loadedName.current = selectedName;
+    if (nameChanged) setMyOpenTasks([]);
+    if (!selectedName) return;
+    let cancelled = false;
+    if (nameChanged) setTasksLoading(true);
+    fetch(`/api/clickup-tasks/live?name=${encodeURIComponent(selectedName)}`, {
+      cache: "no-store",
+    })
+      .then((r) => r.json())
+      .then((d) => {
+        if (cancelled) return;
+        setMyOpenTasks(Array.isArray(d.tasks) ? d.tasks : []);
+        setTasksLive(d.live !== false);
+      })
+      .catch(() => {
+        /* keep what's shown */
+      })
+      .finally(() => !cancelled && setTasksLoading(false));
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedName, liveClickUp]);
+
+  const [openTaskId, setOpenTaskId] = useState<string | null>(null);
+  const [savingTaskId, setSavingTaskId] = useState<string | null>(null);
+
+  function setLocalStatus(taskId: string, status: string, color: string) {
+    setMyOpenTasks((tasks) =>
+      tasks.map((t) =>
+        t.id === taskId ? { ...t, status, statusColor: color } : t,
+      ),
     );
-  }, [selectedName, clickupData, teamRows]);
+  }
+
+  // A status picked here is pushed to ClickUp immediately - no waiting for
+  // the report to be submitted.
+  async function pushStatus(t: Task, status: string) {
+    if (status === t.status) return;
+    setSavingTaskId(t.id);
+    try {
+      const res = await fetch(`/api/clickup-tasks/${t.id}/status`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status }),
+      });
+      if (!res.ok) throw new Error();
+      const color =
+        listStatuses[t.listId]?.find((s) => s.status === status)?.color ?? "";
+      setLocalStatus(t.id, status, color);
+      toast(`✓ "${t.name}" is now ${status} in ClickUp`);
+    } catch {
+      toast(`Couldn't update "${t.name}" in ClickUp - please try again.`);
+    } finally {
+      setSavingTaskId(null);
+    }
+  }
 
   // Tasks with no due date carry no accountability date, so they're dropped
   // entirely - every remaining task (soonest/most-overdue first, no cap)
@@ -197,9 +235,21 @@ export default function SubmitPage() {
     [topTasks],
   );
 
-  const [taskStatuses, setTaskStatuses] = useState<
-    Record<string, { status: TaskReviewStatus | ""; note: string }>
+  // Per-task note for the report. Status lives on the task itself
+  // (myOpenTasks), since it's already in ClickUp the moment it's picked.
+  const [taskNotes, setTaskNotes] = useState<Record<string, string>>({});
+
+  // Each task's dropdown offers only its own list's ClickUp statuses.
+  const [listStatuses, setListStatuses] = useState<
+    Record<string, ClickUpStatus[]>
   >({});
+  useEffect(() => {
+    const listIds = [...new Set(topTasks.map((t) => t.listId).filter(Boolean))];
+    for (const id of listIds)
+      fetchListStatuses(id).then((statuses) =>
+        setListStatuses((v) => ({ ...v, [id]: statuses })),
+      );
+  }, [topTasks]);
 
   // Every answer field uses the rich text editor (Slack has no HTML renderer,
   // so answers are converted to Slack mrkdwn client-side before submission -
@@ -340,30 +390,6 @@ export default function SubmitPage() {
       return;
     }
 
-    // Every listed open task needs a status; At Risk/Blocked ones need the follow-up answered.
-    const missingStatus = topTasks.filter((t) => !taskStatuses[t.id]?.status);
-    if (missingStatus.length > 0) {
-      toast(
-        `Please select a status for each open task listed (missing: "${missingStatus[0].name}").`,
-      );
-      return;
-    }
-    const missingNote = topTasks.find((t) => {
-      const s = taskStatuses[t.id]?.status;
-      return (
-        (s === "at_risk" || s === "blocked" || s === "closed") &&
-        !(taskStatuses[t.id]?.note ?? "").trim()
-      );
-    });
-    if (missingNote) {
-      toast(
-        taskStatuses[missingNote.id]?.status === "closed"
-          ? `"${missingNote.name}" is Closed - please explain why it's no longer relevant.`
-          : `"${missingNote.name}" is At Risk/Blocked - please explain what's blocking it and a new date.`,
-      );
-      return;
-    }
-
     const payload: Record<string, string> = {};
     for (const [k, v] of fd.entries()) {
       payload[k] = v as string;
@@ -372,8 +398,8 @@ export default function SubmitPage() {
     payload.task_statuses = JSON.stringify(
       topTasks.map((t) => ({
         id: t.id,
-        status: taskStatuses[t.id]?.status || "on_track",
-        note: (taskStatuses[t.id]?.note ?? "").trim(),
+        status: t.status,
+        note: (taskNotes[t.id] ?? "").trim(),
       })),
     );
 
@@ -408,10 +434,14 @@ export default function SubmitPage() {
         setSubmittedName(name);
         setAnalysis(data.analysis ?? null);
         toast(`✓ Report submitted for ${name}`);
+        if (data.clickup_sync_failed?.length)
+          toast(
+            `Couldn't update in ClickUp: ${data.clickup_sync_failed.join(", ")} - please update ${data.clickup_sync_failed.length === 1 ? "it" : "them"} directly in ClickUp.`,
+          );
         clearDraft();
         setDraftRestored(false);
         setRichValues({});
-        setTaskStatuses({});
+        setTaskNotes({});
         formRef.current?.reset();
         window.scrollTo({ top: 0, behavior: "smooth" });
       } else {
@@ -496,247 +526,270 @@ export default function SubmitPage() {
   }
 
   return (
-    <form
-      ref={formRef}
-      onSubmit={handleSubmit}
-      onInput={saveDraft}
-      className="space-y-4"
-    >
-      <div className="flex items-center justify-between mt-6 mb-3">
-        <div className="slbl !mt-0 !mb-0">Weekly Report</div>
-        <Link
-          href="/mochary-method"
-          className="text-xs font-bold text-accent hover:underline whitespace-nowrap"
-        >
-          Mochary Method reference →
-        </Link>
-      </div>
-      {draftRestored && (
-        <div className="alert alert-blue items-center justify-between">
-          <span>Draft restored - your unsaved answers were recovered.</span>
-          <button
-            type="button"
-            onClick={discardDraft}
-            className="text-xs font-bold underline whitespace-nowrap"
+    <>
+      <form
+        ref={formRef}
+        onSubmit={handleSubmit}
+        onInput={saveDraft}
+        className="space-y-4"
+      >
+        <div className="flex items-center justify-between mt-6 mb-3">
+          <div className="slbl !mt-0 !mb-0">Weekly Report</div>
+          <Link
+            href="/mochary-method"
+            className="text-xs font-bold text-accent hover:underline whitespace-nowrap"
           >
-            Start fresh
-          </button>
+            Mochary Method reference →
+          </Link>
         </div>
-      )}
-
-      <div className="card">
-        <div className="card-hd">
-          <div className="card-ti">Your Information</div>
-        </div>
-        <div className="card-body space-y-4">
-          <div>
-            <label className="text-xs font-bold uppercase tracking-widest text-ink3 block mb-1">
-              Your Name <span className="text-danger">*</span>
-            </label>
-            {isAdmin ? (
-              <select
-                name="name"
-                className="field-input"
-                required
-                onChange={(e) => setSelectedName(e.target.value)}
-              >
-                <option value="">- Select -</option>
-                {teamNames.map((n) => (
-                  <option key={n} value={n}>
-                    {n}
-                  </option>
-                ))}
-              </select>
-            ) : lockedName ? (
-              <div className="field-input bg-sand2 flex items-center justify-between">
-                <span className="font-semibold">{lockedName}</span>
-                <span className="text-[10px] font-bold uppercase tracking-widest text-ink4">
-                  You
-                </span>
-              </div>
-            ) : (
-              <div className="text-sm text-danger">
-                Your account isn’t linked to a team member, so you can’t submit
-                a report. Please contact an admin.
-              </div>
-            )}
+        {draftRestored && (
+          <div className="alert alert-blue items-center justify-between">
+            <span>Draft restored - your unsaved answers were recovered.</span>
+            <button
+              type="button"
+              onClick={discardDraft}
+              className="text-xs font-bold underline whitespace-nowrap"
+            >
+              Start fresh
+            </button>
           </div>
-          <div>
-            <label className="text-xs font-bold uppercase tracking-widest text-ink3 block mb-1">
-              Report Week <span className="text-danger">*</span>
-            </label>
-            <WeekCalendar
-              selectedMonday={selectedMonday}
-              onSelectWeek={setSelectedMonday}
-              maxMonday={currentMonday}
-            />
-            <input
-              type="hidden"
-              name="week"
-              value={weekLabel(selectedMonday)}
-            />
-            {prevWeekPending &&
-              selectedMonday.getTime() === currentMonday.getTime() && (
-                <div className="alert alert-amber items-start justify-between mt-3 mb-0">
-                  <span>
-                    It looks like you haven&apos;t submitted your report for the
-                    previous week ({weekLabel(prevMonday)}). Are you sure you
-                    want to submit a report for the current week? If you&apos;re
-                    submitting last week&apos;s report, please change the
-                    selected week before continuing.
+        )}
+
+        <div className="card">
+          <div className="card-hd">
+            <div className="card-ti">Your Information</div>
+          </div>
+          <div className="card-body space-y-4">
+            <div>
+              <label className="text-xs font-bold uppercase tracking-widest text-ink3 block mb-1">
+                Your Name <span className="text-danger">*</span>
+              </label>
+              {isAdmin ? (
+                <select
+                  name="name"
+                  className="field-input"
+                  required
+                  onChange={(e) => setSelectedName(e.target.value)}
+                >
+                  <option value="">- Select -</option>
+                  {teamNames.map((n) => (
+                    <option key={n} value={n}>
+                      {n}
+                    </option>
+                  ))}
+                </select>
+              ) : lockedName ? (
+                <div className="field-input bg-sand2 flex items-center justify-between">
+                  <span className="font-semibold">{lockedName}</span>
+                  <span className="text-[10px] font-bold uppercase tracking-widest text-ink4">
+                    You
                   </span>
-                  <button
-                    type="button"
-                    onClick={() => setSelectedMonday(prevMonday)}
-                    className="text-xs font-bold underline whitespace-nowrap ml-3 shrink-0"
-                  >
-                    Switch to {weekLabel(prevMonday)}
-                  </button>
+                </div>
+              ) : (
+                <div className="text-sm text-danger">
+                  Your account isn’t linked to a team member, so you can’t
+                  submit a report. Please contact an admin.
                 </div>
               )}
+            </div>
+            <div>
+              <label className="text-xs font-bold uppercase tracking-widest text-ink3 block mb-1">
+                Report Week <span className="text-danger">*</span>
+              </label>
+              <WeekCalendar
+                selectedMonday={selectedMonday}
+                onSelectWeek={setSelectedMonday}
+                maxMonday={currentMonday}
+              />
+              <input
+                type="hidden"
+                name="week"
+                value={weekLabel(selectedMonday)}
+              />
+              {prevWeekPending &&
+                selectedMonday.getTime() === currentMonday.getTime() && (
+                  <div className="alert alert-amber items-start justify-between mt-3 mb-0">
+                    <span>
+                      It looks like you haven&apos;t submitted your report for
+                      the previous week ({weekLabel(prevMonday)}). Are you sure
+                      you want to submit a report for the current week? If
+                      you&apos;re submitting last week&apos;s report, please
+                      change the selected week before continuing.
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => setSelectedMonday(prevMonday)}
+                      className="text-xs font-bold underline whitespace-nowrap ml-3 shrink-0"
+                    >
+                      Switch to {weekLabel(prevMonday)}
+                    </button>
+                  </div>
+                )}
+            </div>
           </div>
         </div>
-      </div>
 
-      {selectedName && (
-        <div className="card">
-          <div className="card-hd flex items-center justify-between">
-            <div className="card-ti">0. Your Open Tasks</div>
-            {myOverdueCount > 0 && (
-              <span className="badge-red">{myOverdueCount} overdue</span>
-            )}
-          </div>
-          <div className="card-body space-y-3">
-            {topTasks.length === 0 ? (
-              <div className="alert alert-green">
-                No tasks with a due date right now - nice and clear.
-              </div>
-            ) : (
-              topTasks.map((t) => {
-                const overdue = bucketFor(t.dueTs) === "overdue";
-                const entry = taskStatuses[t.id];
-                const needsNote =
-                  entry?.status === "at_risk" ||
-                  entry?.status === "blocked" ||
-                  entry?.status === "closed";
-                return (
-                  <div
-                    key={t.id}
-                    className="border border-sand3 rounded-lg p-3"
-                  >
-                    <div className="flex items-center justify-between gap-3 mb-2">
-                      <a
-                        href={t.url}
-                        target="_blank"
-                        rel="noreferrer"
-                        className={`text-sm underline truncate ${overdue ? "text-danger font-semibold" : "text-ink2"}`}
-                      >
-                        {t.name}
-                      </a>
-                      <span className="text-xs whitespace-nowrap shrink-0 text-ink4">
-                        Due {t.dueDate}
-                        {overdue ? " · OVERDUE" : ""}
-                      </span>
-                    </div>
-                    <div className="text-[10px] font-bold uppercase tracking-widest text-ink4 mb-2">
-                      Owner: {selectedName}
-                    </div>
-                    <select
-                      className="field-input text-sm"
-                      value={entry?.status ?? ""}
-                      onChange={(e) => {
-                        const status = e.target.value as TaskReviewStatus | "";
-                        setTaskStatuses((v) => ({
-                          ...v,
-                          [t.id]: { status, note: v[t.id]?.note ?? "" },
-                        }));
-                      }}
+        {selectedName && (
+          <div className="card">
+            <div className="card-hd flex items-center justify-between">
+              <div className="card-ti">0. Your Open Tasks</div>
+              {myOverdueCount > 0 && (
+                <span className="badge-red">{myOverdueCount} overdue</span>
+              )}
+            </div>
+            <div className="card-body space-y-3">
+              {!tasksLive && !tasksLoading && (
+                <div className="alert alert-amber">
+                  Couldn&apos;t reach ClickUp just now - showing the last saved
+                  copy of these tasks.
+                </div>
+              )}
+              {tasksLoading ? (
+                <div className="flex justify-center py-6">
+                  <Spinner />
+                </div>
+              ) : topTasks.length === 0 ? (
+                <div className="alert alert-green">
+                  No tasks with a due date right now - nice and clear.
+                </div>
+              ) : (
+                topTasks.map((t) => {
+                  const overdue = bucketFor(t.dueTs) === "overdue";
+                  const options = listStatuses[t.listId] ?? [];
+                  return (
+                    <div
+                      key={t.id}
+                      className="border border-sand3 rounded-lg p-3"
                     >
-                      <option value="">- Status -</option>
-                      {(
-                        Object.keys(TASK_STATUS_LABELS) as TaskReviewStatus[]
-                      ).map((s) => (
-                        <option key={s} value={s}>
-                          {TASK_STATUS_LABELS[s]}
-                        </option>
-                      ))}
-                    </select>
-                    {needsNote && (
+                      <div className="flex items-center justify-between gap-3 mb-2">
+                        <span className="flex items-center gap-1.5 min-w-0">
+                          <button
+                            type="button"
+                            onClick={() => setOpenTaskId(t.id)}
+                            className={`text-sm underline truncate text-left ${overdue ? "text-danger font-semibold" : "text-ink2"}`}
+                            title="View task details"
+                          >
+                            {t.name}
+                          </button>
+                          <a
+                            href={t.url}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="text-ink4 hover:text-ink2 shrink-0"
+                            title="Open in ClickUp"
+                          >
+                            <FiExternalLink className="w-3.5 h-3.5" />
+                          </a>
+                        </span>
+                        <span className="text-xs whitespace-nowrap shrink-0 text-ink4">
+                          Due {t.dueDate}
+                          {overdue ? " · OVERDUE" : ""}
+                        </span>
+                      </div>
+                      <div className="text-[10px] font-bold uppercase tracking-widest text-ink4 mb-2">
+                        Owner: {selectedName}
+                      </div>
+                      <select
+                        className="field-input text-sm disabled:opacity-50"
+                        value={t.status}
+                        disabled={savingTaskId === t.id}
+                        onChange={(e) => pushStatus(t, e.target.value)}
+                      >
+                        {/* Current status first so it's always selectable, even
+                          before the list's statuses have loaded. */}
+                        <option value={t.status}>{t.status || "-"}</option>
+                        {options
+                          .filter(
+                            (s) =>
+                              s.status.toLowerCase() !== t.status.toLowerCase(),
+                          )
+                          .map((s) => (
+                            <option key={s.status} value={s.status}>
+                              {s.status}
+                            </option>
+                          ))}
+                      </select>
                       <textarea
                         className="field-input resize-none mt-2 text-sm"
                         rows={2}
-                        placeholder={
-                          entry?.status === "closed"
-                            ? "Why is this task no longer relevant or needed?"
-                            : "What's blocking it, specifically? What new date can you commit to? Is this blocked by another team member or team - who, and what do you need from them?"
-                        }
-                        value={entry?.note ?? ""}
+                        placeholder="Note (optional) - what's blocking it and the new date you can commit to, who you need something from, or why it's no longer needed."
+                        value={taskNotes[t.id] ?? ""}
                         onChange={(e) => {
                           const note = e.target.value;
-                          setTaskStatuses((v) => ({
-                            ...v,
-                            [t.id]: { status: v[t.id]?.status ?? "", note },
-                          }));
+                          setTaskNotes((v) => ({ ...v, [t.id]: note }));
                         }}
                       />
-                    )}
-                  </div>
-                );
-              })
-            )}
-            <p className="text-xs text-ink4">
-              Only{" "}
-              {isAdmin && selectedName !== me?.fullName
-                ? `${selectedName}’s`
-                : "your"}{" "}
-              own open tasks are shown here - this list, with the status and
-              notes above, is posted to Slack automatically with the report. No
-              one else&apos;s tasks are included.
-            </p>
+                    </div>
+                  );
+                })
+              )}
+              <p className="text-xs text-ink4">
+                Only{" "}
+                {isAdmin && selectedName !== me?.fullName
+                  ? `${selectedName}’s`
+                  : "your"}{" "}
+                own open tasks are shown here - this list, with the status and
+                notes above, is posted to Slack automatically with the report.
+                No one else&apos;s tasks are included. Tasks and statuses are
+                loaded live from ClickUp - a status you change here is updated
+                in ClickUp right away. Click a task to see its full details.
+              </p>
+            </div>
           </div>
-        </div>
-      )}
+        )}
 
-      {SECTIONS.map((section) => (
-        <div key={section.title} className="card">
-          <div className="card-hd">
-            <div className="card-ti">{section.title}</div>
-          </div>
-          <div className="card-body space-y-4">
-            {section.fields.map((f) => (
-              <div key={f.name}>
-                <label className="text-xs font-bold uppercase tracking-widest text-ink3 block mb-1">
-                  {f.label}
-                </label>
-                <RichTextEditor
-                  value={richValues[f.name] ?? ""}
-                  onChange={(html) =>
-                    setRichValues((v) => ({ ...v, [f.name]: html }))
-                  }
-                  placeholder={f.placeholder}
-                  minRows={f.rows}
-                />
-                {/* Slack has no HTML renderer - the field the API/DB/Slack see
+        {SECTIONS.map((section) => (
+          <div key={section.title} className="card">
+            <div className="card-hd">
+              <div className="card-ti">{section.title}</div>
+            </div>
+            <div className="card-body space-y-4">
+              {section.fields.map((f) => (
+                <div key={f.name}>
+                  <label className="text-xs font-bold uppercase tracking-widest text-ink3 block mb-1">
+                    {f.label}
+                  </label>
+                  <RichTextEditor
+                    value={richValues[f.name] ?? ""}
+                    onChange={(html) =>
+                      setRichValues((v) => ({ ...v, [f.name]: html }))
+                    }
+                    placeholder={f.placeholder}
+                    minRows={f.rows}
+                  />
+                  {/* Slack has no HTML renderer - the field the API/DB/Slack see
                     is always plain Slack mrkdwn, never raw HTML. */}
-                <input
-                  type="hidden"
-                  name={f.name}
-                  value={htmlToSlackMrkdwn(richValues[f.name] ?? "")}
-                  readOnly
-                />
-              </div>
-            ))}
+                  <input
+                    type="hidden"
+                    name={f.name}
+                    value={htmlToSlackMrkdwn(richValues[f.name] ?? "")}
+                    readOnly
+                  />
+                </div>
+              ))}
+            </div>
           </div>
-        </div>
-      ))}
+        ))}
 
-      <button
-        type="submit"
-        disabled={submitting || (!isAdmin && !lockedName)}
-        className="btn-primary w-full sm:w-auto disabled:opacity-50"
-      >
-        {submitting ? <Spinner label="Submitting…" /> : "Submit Weekly Report"}
-      </button>
-    </form>
+        <button
+          type="submit"
+          disabled={submitting || (!isAdmin && !lockedName)}
+          className="btn-primary w-full sm:w-auto disabled:opacity-50"
+        >
+          {submitting ? (
+            <Spinner label="Submitting…" />
+          ) : (
+            "Submit Weekly Report"
+          )}
+        </button>
+      </form>
+      {openTaskId && (
+        <TaskDetailModal
+          taskId={openTaskId}
+          onClose={() => setOpenTaskId(null)}
+          onStatusChange={setLocalStatus}
+        />
+      )}
+    </>
   );
 }

@@ -1,5 +1,6 @@
 // GET /api/invoices - reads directly from Supabase invoices table
 import { NextRequest, NextResponse } from "next/server";
+import { isManager } from "@/lib/roles";
 import { buildInvoicesSnapshot } from "@/lib/invoices";
 
 export async function GET(req: NextRequest) {
@@ -12,7 +13,7 @@ export async function GET(req: NextRequest) {
     const invoices = snapshot.invoices.map((inv) => ({
       ...inv,
       rate: role === "owner" ? inv.rate : 0,
-      amount: role === "admin" || role === "owner" ? inv.amount : 0,
+      amount: isManager(role) ? inv.amount : 0,
     }));
     return NextResponse.json({ invoices });
   } catch (err) {

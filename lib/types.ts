@@ -21,6 +21,29 @@ export interface ClickUpStatus {
   type: string;
 }
 
+/** Full detail of one ClickUp task, for the task detail modal. */
+export interface ClickUpTaskDetail {
+  id: string;
+  name: string;
+  url: string;
+  description: string;
+  status: string;
+  statusColor: string;
+  listId: string;
+  list: string;
+  statuses: ClickUpStatus[];
+  priority: string;
+  dueDate: string | null;
+  startDate: string | null;
+  createdAt: string | null;
+  creator: string | null;
+  assignees: Array<{ name: string; image: string | null; initials: string }>;
+  tags: string[];
+  images: Array<{ url: string; title: string }>;
+  files: Array<{ url: string; title: string }>;
+  comments: Array<{ author: string; text: string; date: string | null }>;
+}
+
 export interface AssigneeStat {
   total: number;
   overdue: number;

@@ -2,116 +2,113 @@ import { NextRequest, NextResponse } from "next/server";
 import Anthropic from "@anthropic-ai/sdk";
 import { postMessage } from "@/lib/slack";
 import { getSupabase } from "@/lib/supabase";
-import { getTeamMemberByUsername, getTeamMembers } from "@/lib/team-db";
+import { getTeamMemberByUsername } from "@/lib/team-db";
 import {
   parseWeekStart,
   fmtWeekRange,
   weekLabelVariants,
   getMondayOfWeekPT,
 } from "@/lib/week-utils";
-import { getCachedSWR } from "@/lib/api-cache";
-import {
-  openTasksFor,
-  dueDateTasksOnly,
-  TASK_STATUS_LABELS,
-  type TaskReviewStatus,
-} from "@/lib/open-tasks";
+import { isManager } from "@/lib/roles";
+import { liveOpenTasksFor } from "@/lib/live-open-tasks";
+import { dueDateTasksOnly, type TaskStatusEntry } from "@/lib/open-tasks";
 import { bucketFor } from "@/lib/due-buckets";
-import { closeTask } from "@/lib/clickup";
-import type { ClickUpData } from "@/lib/types";
+import { getListStatuses, setTaskStatusOnList } from "@/lib/clickup";
 
-import {
-  SLACK_CHANNEL_WEEKLY_REPORTS,
-  CACHE_TTL_SYSTEMS_MS,
-} from "@/lib/constants";
+import { SLACK_CHANNEL_WEEKLY_REPORTS } from "@/lib/constants";
 const SLACK_CHANNEL =
   process.env.SLACK_CHANNEL_WEEKLY_REPORTS ?? SLACK_CHANNEL_WEEKLY_REPORTS;
 
 // Builds one line per open task for a single reporter - never includes
 // another team member's tasks, so this is always computed from that
-// reporter's own ClickUp key, not from the full team snapshot. Task identity,
+// reporter's own ClickUp tasks, fetched live. Task identity,
 // name, and due date always come from ClickUp (not the client); the status
-// and blocker note per task are the reporter's own submitted answers.
+// and note per task are the reporter's own submitted answers.
 // Returned as individual lines (not one joined string) so the caller can pack
 // them into Slack messages that stay under Slack's length limit without ever
 // splitting a task away from its own note.
 async function buildOpenTasksLines(
   name: string,
   taskStatusesRaw?: string,
-): Promise<string[]> {
-  const [clickupResult, teamMembers] = await Promise.all([
-    getCachedSWR<ClickUpData>("clickup", CACHE_TTL_SYSTEMS_MS),
-    getTeamMembers(),
-  ]);
-  const member = teamMembers.find((m) => m.full_name === name);
-  const fallbackFirstName = name.split(" ")[0];
-  const allTasks = openTasksFor(
-    clickupResult.data?.tasksByAssignee,
-    member?.clickup_key,
-    fallbackFirstName,
-  );
+): Promise<{ lines: string[]; syncFailed: string[] }> {
+  // Live from ClickUp (same source the form showed), so statuses compared
+  // below are what ClickUp has right now, not a possibly stale cache.
+  const { tasks: allTasks } = await liveOpenTasksFor(name);
   const tasks = dueDateTasksOnly(allTasks);
   if (tasks.length === 0)
-    return [
-      `_No tasks with a due date right now - nice and clear._\nOwner: ${name}`,
-    ];
+    return {
+      lines: [
+        `_No tasks with a due date right now - nice and clear._\nOwner: ${name}`,
+      ],
+      syncFailed: [],
+    };
 
-  const statusMap = new Map<
-    string,
-    { status: TaskReviewStatus; note: string }
-  >();
+  const statusMap = new Map<string, { status: string; note: string }>();
   if (taskStatusesRaw) {
     try {
-      const parsed = JSON.parse(taskStatusesRaw) as Array<{
-        id: string;
-        status: TaskReviewStatus;
-        note?: string;
-      }>;
+      const parsed = JSON.parse(taskStatusesRaw) as TaskStatusEntry[];
       for (const p of parsed)
-        if (p?.id && p.status in TASK_STATUS_LABELS)
+        if (p?.id && typeof p.status === "string" && p.status.trim())
           statusMap.set(p.id, {
-            status: p.status,
+            status: p.status.trim(),
             note: (p.note ?? "").trim(),
           });
     } catch {
-      /* malformed - fall back to "Not reviewed" for every task */
+      /* malformed - fall back to each task's current ClickUp status */
     }
   }
 
-  // Push every task reviewed as "Done" or "Closed" back to ClickUp so the
-  // report is the source of truth for status, not just a Slack-side label.
+  // The report's status picker shows each task's real ClickUp statuses, so
+  // any change the reporter made is pushed straight back to ClickUp - the
+  // report and ClickUp always agree. Only changed tasks are written (an
+  // untouched task never overwrites a newer edit made directly in ClickUp).
   // Best-effort per task - a ClickUp failure must never block the report
-  // from posting.
-  const resolvedTasks = tasks.filter((t) => {
+  // from posting, but it's reported back so the reporter knows.
+  const changed = tasks.filter((t) => {
     const status = statusMap.get(t.id)?.status;
-    return status === "done" || status === "closed";
+    return !!status && status.toLowerCase() !== t.status.toLowerCase();
   });
+  const listStatuses = new Map<string, ReturnType<typeof getListStatuses>>();
+  for (const t of changed)
+    if (t.listId && !listStatuses.has(t.listId))
+      listStatuses.set(t.listId, getListStatuses(t.listId));
+  const failedIds = new Set<string>();
   await Promise.all(
-    resolvedTasks.map((t) =>
-      closeTask(t.id, t.listId).catch((err) =>
-        console.error(`ClickUp close failed for task ${t.id}:`, err),
-      ),
-    ),
+    changed.map(async (t) => {
+      try {
+        if (!t.listId) throw new Error("task has no list");
+        await setTaskStatusOnList(
+          t.id,
+          t.listId,
+          statusMap.get(t.id)!.status,
+          await listStatuses.get(t.listId)!,
+        );
+      } catch (err) {
+        console.error(`ClickUp status update failed for task ${t.id}:`, err);
+        failedIds.add(t.id);
+      }
+    }),
   );
 
   const now = new Date();
-  return tasks.map((t) => {
+  const lines = tasks.map((t) => {
     const entry = statusMap.get(t.id);
-    const label = entry ? TASK_STATUS_LABELS[entry.status] : "Not reviewed";
+    const status = entry?.status ?? t.status;
+    const label =
+      status.toLowerCase() !== t.status.toLowerCase()
+        ? `${t.status} → ${status}`
+        : status;
     const overdueFlag =
       bucketFor(t.dueTs, now) === "overdue" ? " *(OVERDUE)*" : "";
     let line = `• <${t.url}|${t.name}> - Owner: ${name} - due ${t.dueDate}${overdueFlag} - *${label}*`;
-    if (
-      entry &&
-      (entry.status === "at_risk" ||
-        entry.status === "blocked" ||
-        entry.status === "closed") &&
-      entry.note
-    ) {
-      line += `\n   ${entry.note}`;
-    }
+    if (failedIds.has(t.id)) line += " _(not updated in ClickUp)_";
+    if (entry?.note) line += `\n   ${entry.note}`;
     return line;
   });
+  const syncFailed = tasks
+    .filter((t) => failedIds.has(t.id))
+    .map((t) => t.name);
+  return { lines, syncFailed };
 }
 
 // Slack's chat.postMessage silently mangles very long text (truncates or, at
@@ -170,10 +167,6 @@ async function postWeeklyReportMessage(
   return firstTs;
 }
 
-function isManager(role: string | null): boolean {
-  return role === "admin" || role === "owner";
-}
-
 interface ReportBody {
   name: string;
   week: string;
@@ -203,7 +196,10 @@ async function analyzeReport(report: ReportBody): Promise<AiAnalysis | null> {
 
   // Explicit baseURL - see app/api/chat/route.ts for why (Netlify AI Gateway
   // silently injects ANTHROPIC_BASE_URL, which the SDK would otherwise use).
-  const client = new Anthropic({ apiKey, baseURL: "https://api.anthropic.com" });
+  const client = new Anthropic({
+    apiKey,
+    baseURL: "https://api.anthropic.com",
+  });
 
   const prompt = `You are analyzing a weekly report from ${report.name} for the week of ${report.week}. Provide a concise executive analysis.
 
@@ -310,7 +306,10 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const openTasksLines = await buildOpenTasksLines(name, body.task_statuses);
+  const { lines: openTasksLines, syncFailed } = await buildOpenTasksLines(
+    name,
+    body.task_statuses,
+  );
 
   const atoms: string[] = [
     "#myweeklyreport",
@@ -382,6 +381,7 @@ export async function POST(req: NextRequest) {
     success: true,
     id: data.id,
     analysis: aiAnalysis,
+    clickup_sync_failed: syncFailed,
   });
 }
 

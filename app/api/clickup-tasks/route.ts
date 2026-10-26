@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { buildClickUpSnapshot } from "@/lib/clickup";
 import {
+  getCachedAt,
   getCachedSWR,
   recordSuccess,
   recordFailure,
@@ -21,11 +22,16 @@ const EMPTY = {
   tasksByAssignee: {},
 };
 
-// GET - stale-while-revalidate from Supabase cache (no ClickUp API call)
+// GET - stale-while-revalidate from Supabase cache (no ClickUp API call).
+// ?version=1 returns only when the cache last changed, so open pages can
+// cheaply poll for ClickUp changes (see RefreshContext).
 export async function GET(req: NextRequest) {
   const role = req.headers.get("x-role");
   if (!role)
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+  if (req.nextUrl.searchParams.has("version"))
+    return NextResponse.json({ fetchedAt: await getCachedAt("clickup") });
 
   const result = await getCachedSWR("clickup", CACHE_TTL_SYSTEMS_MS);
 

@@ -262,7 +262,7 @@ export default function DashboardPage() {
     { overdue_count: number; urgent_count: number; reports_filed: string[] }[]
   >([]);
   const [okrs, setOkrs] = useState<OKR[]>([]);
-  const { refreshKey, freshClickUp } = useRefresh();
+  const { refreshKey, freshClickUp, liveClickUp } = useRefresh();
   const prevKey = useRef(refreshKey);
   const { isOwner, isAdmin, me } = useMe();
   const [selectedMonday, setSelectedMonday] = useState<Date>(() =>
@@ -367,6 +367,11 @@ export default function DashboardPage() {
       cancelled.v = true;
     };
   }, [load]);
+
+  // ClickUp changed (webhook) - swap in the new data quietly, no reload.
+  useEffect(() => {
+    if (liveClickUp) setClickUp(liveClickUp as unknown as ClickUpData);
+  }, [liveClickUp]);
 
   useEffect(() => {
     if (refreshKey === prevKey.current) return;

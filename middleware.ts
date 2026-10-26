@@ -21,6 +21,11 @@ export async function middleware(req: NextRequest) {
     return NextResponse.next();
   }
 
+  // ClickUp webhook - no session; the route verifies ClickUp's HMAC signature.
+  if (pathname === "/api/clickup-webhook" && req.method === "POST") {
+    return NextResponse.next();
+  }
+
   if (
     pathname.startsWith("/login") ||
     pathname.startsWith("/signup") ||

@@ -34,6 +34,16 @@ export async function getCached(source: string): Promise<CacheRow | null> {
   return data ?? null;
 }
 
+/** Just when a source was last written - a cheap "has it changed?" check. */
+export async function getCachedAt(source: string): Promise<string | null> {
+  const { data } = await supabase
+    .from("vcos_api_cache")
+    .select("fetched_at")
+    .eq("source", source)
+    .single();
+  return data?.fetched_at ?? null;
+}
+
 /**
  * Stale-while-revalidate read.
  * Always returns data if it exists, but marks it stale/dead.

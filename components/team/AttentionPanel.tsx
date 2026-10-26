@@ -60,7 +60,7 @@ const daysSince = (d: string) =>
   Math.floor((Date.now() - new Date(d).getTime()) / 86400000);
 
 export default function AttentionPanel() {
-  const { refreshKey } = useRefresh();
+  const { refreshKey, liveClickUp } = useRefresh();
   const [clickup, setClickUp] = useState<ClickUpData | null>(null);
   const [team, setTeam] = useState<TeamRow[]>([]);
   const [reports, setReports] = useState<ReportRow[]>([]);
@@ -98,6 +98,11 @@ export default function AttentionPanel() {
       setLoading(false);
     });
   }, [refreshKey]);
+
+  // ClickUp changed (webhook) - swap in the new data quietly, no reload.
+  useEffect(() => {
+    if (liveClickUp) setClickUp(liveClickUp as unknown as ClickUpData);
+  }, [liveClickUp]);
 
   const escalations: Escalation[] = useMemo(() => {
     const out: Escalation[] = [];

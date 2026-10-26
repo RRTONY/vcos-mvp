@@ -42,23 +42,11 @@ export function dueDateTasksOnly(tasks: Task[]): Task[] {
     .sort((a, b) => a.dueTs - b.dueTs);
 }
 
-export type TaskReviewStatus =
-  | "on_track"
-  | "at_risk"
-  | "blocked"
-  | "done"
-  | "closed";
-
-export const TASK_STATUS_LABELS: Record<TaskReviewStatus, string> = {
-  on_track: "On Track",
-  at_risk: "At Risk",
-  blocked: "Blocked",
-  done: "Done",
-  closed: "Closed (Not Relevant/Dropped)",
-};
-
+/** A weekly-report answer for one task. `status` is the task's real ClickUp
+ *  status name (from its own list's statuses), so whatever the reporter picks
+ *  is exactly what gets written back to ClickUp - no VCoS-only labels. */
 export interface TaskStatusEntry {
   id: string;
-  status: TaskReviewStatus;
+  status: string;
   note?: string;
 }
