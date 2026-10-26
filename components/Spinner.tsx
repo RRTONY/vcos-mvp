@@ -4,7 +4,7 @@ import { FiLoader } from 'react-icons/fi'
 
 /**
  * Small inline loading spinner. Inherits text color (currentColor) so it works
- * on both light surfaces and colored buttons. Pass a label for a "… Loading" row.
+ * on both light surfaces and colored buttons. Pass a label (e.g. "Saving") for a spinner + text row.
  */
 export default function Spinner({
   label,

@@ -1,5 +1,6 @@
 "use client";
 
+import Spinner from "@/components/Spinner";
 import { useState } from "react";
 
 export default function SignupPage() {
@@ -124,7 +125,7 @@ export default function SignupPage() {
             disabled={loading}
             className="btn-primary w-full"
           >
-            {loading ? "Submitting…" : "Request Access"}
+            {loading ? <Spinner label="Submitting" /> : "Request Access"}
           </button>
         </div>
       </form>

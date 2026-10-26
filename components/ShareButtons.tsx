@@ -1,5 +1,6 @@
 'use client'
 
+import Spinner from '@/components/Spinner'
 import { useState } from 'react'
 import { useToast } from './Toast'
 
@@ -38,7 +39,7 @@ export function ShareSlackButton({ message, label = 'Post to Slack', channel }: 
       className="inline-flex items-center gap-1.5 border border-sand3 px-3 py-1.5 text-xs font-bold hover:bg-sand2 transition-colors disabled:opacity-50"
     >
       <SlackIcon />
-      {loading ? 'Posting…' : label}
+      {loading ? <Spinner label="Posting" /> : label}
     </button>
   )
 }
@@ -86,7 +87,7 @@ export function ShareClickUpButton({ title, description, priority = 3, label = '
       className="inline-flex items-center gap-1.5 border border-sand3 px-3 py-1.5 text-xs font-bold hover:bg-sand2 transition-colors disabled:opacity-50"
     >
       <ClickUpIcon />
-      {loading ? 'Creating…' : taskUrl ? 'Open in ClickUp ↗' : label}
+      {loading ? <Spinner label="Creating" /> : taskUrl ? 'Open in ClickUp ↗' : label}
     </button>
   )
 }

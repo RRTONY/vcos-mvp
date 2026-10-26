@@ -1,5 +1,6 @@
 "use client";
 
+import Spinner from "@/components/Spinner";
 import { useEffect, useState } from "react";
 import { useMe } from "@/hooks/useMe";
 import { DEAL_COLD_DAYS, DEAL_STUCK_DAYS } from "@/lib/constants";
@@ -232,7 +233,7 @@ function ActivityLog({ dealId, canAdd }: { dealId: string; canAdd: boolean }) {
               disabled={saving || !summary.trim()}
               className="btn-primary text-[10px] py-0.5 px-2 disabled:opacity-40"
             >
-              {saving ? "…" : "Save"}
+              {saving ? <Spinner /> : "Save"}
             </button>
             <button
               onClick={() => setShowForm(false)}
@@ -813,37 +814,37 @@ export default function BdPage() {
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
         {[
           {
-            value: closedYtd === null ? "…" : fmt(closedYtd),
+            value: closedYtd === null ? <Spinner size="w-6 h-6" /> : fmt(closedYtd),
             label: "Closed YTD",
             sub: "from paid invoices",
             alert: false,
           },
           {
-            value: dealsLoading ? "…" : fmt(metrics?.weightedPipeline ?? 0),
+            value: dealsLoading ? <Spinner size="w-6 h-6" /> : fmt(metrics?.weightedPipeline ?? 0),
             label: "Weighted Pipeline",
             sub: "prob-adjusted value",
             alert: false,
           },
           {
-            value: dealsLoading ? "…" : fmt(metrics?.totalPipeline ?? 0),
+            value: dealsLoading ? <Spinner size="w-6 h-6" /> : fmt(metrics?.totalPipeline ?? 0),
             label: "Total Pipeline",
             sub: "unweighted, excl. deferred",
             alert: false,
           },
           {
-            value: dealsLoading ? "…" : (metrics?.totalDeals ?? 0),
+            value: dealsLoading ? <Spinner size="w-6 h-6" /> : (metrics?.totalDeals ?? 0),
             label: "Active Deals",
             sub: "excl. deferred",
             alert: false,
           },
           {
-            value: dealsLoading ? "…" : (metrics?.goneCold ?? 0),
+            value: dealsLoading ? <Spinner size="w-6 h-6" /> : (metrics?.goneCold ?? 0),
             label: "Gone Cold",
             sub: "no contact 14d+",
             alert: !dealsLoading && (metrics?.goneCold ?? 0) > 0,
           },
           {
-            value: dealsLoading ? "…" : (metrics?.stuck ?? 0),
+            value: dealsLoading ? <Spinner size="w-6 h-6" /> : (metrics?.stuck ?? 0),
             label: "Stuck",
             sub: "same stage 21d+",
             alert: !dealsLoading && (metrics?.stuck ?? 0) > 0,

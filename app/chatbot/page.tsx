@@ -1,5 +1,6 @@
 "use client";
 
+import Spinner from "@/components/Spinner";
 import { useEffect, useState, useCallback } from "react";
 import {
   List,
@@ -250,7 +251,7 @@ function GoalsModal({ onClose }: { onClose: () => void }) {
               disabled={saving}
               className="btn-primary disabled:opacity-50"
             >
-              {saving ? "Saving…" : "Save goals"}
+              {saving ? <Spinner label="Saving" /> : "Save goals"}
             </button>
             {saved && (
               <span className="text-sm text-success font-semibold">

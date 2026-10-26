@@ -1,5 +1,6 @@
 "use client";
 
+import Spinner from "@/components/Spinner";
 import { useState } from "react";
 import { FiEdit2 } from "react-icons/fi";
 
@@ -86,7 +87,7 @@ function OkrRow({
             aria-label="Note"
           />
           <button type="button" onClick={save} disabled={saving} className="btn-primary !py-2">
-            {saving ? "Saving…" : "Save"}
+            {saving ? <Spinner label="Saving" /> : "Save"}
           </button>
           <button type="button" onClick={() => setEditing(false)} className="btn-ghost">
             Cancel

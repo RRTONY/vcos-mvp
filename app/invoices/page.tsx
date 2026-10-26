@@ -1,5 +1,6 @@
 "use client";
 
+import Spinner from "@/components/Spinner";
 import { useEffect, useState, useRef } from "react";
 import { useRefresh } from "@/components/RefreshContext";
 import { useMe } from "@/hooks/useMe";
@@ -271,7 +272,7 @@ export default function InvoicesPage() {
             </span>
           )}
           <label className="btn-secondary cursor-pointer text-xs">
-            {uploading ? "Importing…" : "↑ Upload PDF"}
+            {uploading ? <Spinner label="Importing" /> : "↑ Upload PDF"}
             <input
               ref={fileRef}
               type="file"
@@ -638,7 +639,7 @@ function InvoiceTable({
                       disabled={pushing === inv.id}
                       className="text-xs text-ink4 hover:text-ink1 underline disabled:opacity-40"
                     >
-                      {pushing === inv.id ? "…" : "+ Add"}
+                      {pushing === inv.id ? <Spinner /> : "+ Add"}
                     </button>
                   )}
                 </td>
@@ -653,7 +654,7 @@ function InvoiceTable({
                       disabled={actioning === inv.id}
                       className="btn-secondary text-xs py-0.5 px-2 disabled:opacity-50"
                     >
-                      {actioning === inv.id ? "…" : "Audit Done"}
+                      {actioning === inv.id ? <Spinner /> : "Audit Done"}
                     </button>
                   )}
                   {inv.status === "audit_done" && isOwner && (
@@ -662,7 +663,7 @@ function InvoiceTable({
                       disabled={actioning === inv.id}
                       className="btn-secondary text-xs py-0.5 px-2 disabled:opacity-50"
                     >
-                      {actioning === inv.id ? "…" : "Approve"}
+                      {actioning === inv.id ? <Spinner /> : "Approve"}
                     </button>
                   )}
                   {inv.status === "approved" && (
@@ -671,7 +672,7 @@ function InvoiceTable({
                       disabled={actioning === inv.id}
                       className="btn-primary text-xs py-0.5 px-2 disabled:opacity-50"
                     >
-                      {actioning === inv.id ? "…" : "Mark Paid"}
+                      {actioning === inv.id ? <Spinner /> : "Mark Paid"}
                     </button>
                   )}
                   {isOwner &&

@@ -777,7 +777,7 @@ export default function SubmitPage() {
           className="btn-primary w-full sm:w-auto disabled:opacity-50"
         >
           {submitting ? (
-            <Spinner label="Submitting…" />
+            <Spinner label="Submitting" />
           ) : (
             "Submit Weekly Report"
           )}

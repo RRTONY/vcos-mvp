@@ -1,5 +1,6 @@
 "use client";
 
+import Spinner from "@/components/Spinner";
 import { useCallback, useEffect, useState } from "react";
 import { useMe } from "@/hooks/useMe";
 import { FiRefreshCw } from "react-icons/fi";
@@ -67,7 +68,7 @@ export default function DailyLogPanel() {
             className="btn-secondary flex items-center gap-1.5 !py-1.5 disabled:opacity-50"
           >
             <FiRefreshCw size={14} className={running ? "animate-spin" : ""} />{" "}
-            {running ? "Running…" : "Run today's brief"}
+            {running ? <Spinner label="Running" /> : "Run today's brief"}
           </button>
         )}
       </div>

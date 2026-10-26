@@ -158,7 +158,11 @@ export async function getLiveTasksForAssignee(
   clickupUserId?: string | null,
 ): Promise<TaskDetail[] | null> {
   const teamId = process.env.CLICKUP_WORKSPACE_ID ?? CLICKUP_WORKSPACE_ID;
-  let userId = clickupUserId?.trim() || null;
+  // ClickUp user ids are numeric; anything else (e.g. a task id pasted into
+  // team_members by mistake) is ignored in favor of the name lookup.
+  let userId = /^\d+$/.test(clickupUserId?.trim() ?? "")
+    ? clickupUserId!.trim()
+    : null;
   if (!userId) {
     const key = cuKey.trim().toLowerCase();
     if (!key) return null;
@@ -198,13 +202,16 @@ export async function getLiveTasksForAssignee(
     .sort(byPriorityThenDue);
 }
 
-const fmtDate = (ms?: string | null) =>
+// Timestamps display in PT. A ClickUp date with no time set (due/start
+// *_date_time false) is stored as that day's midnight UTC, so it must be shown
+// in UTC - in PT it would land on the previous day.
+const fmtDate = (ms?: string | null, dateOnly = false) =>
   ms
     ? new Date(parseInt(ms)).toLocaleDateString("en-US", {
         month: "short",
         day: "numeric",
         year: "numeric",
-        timeZone: "America/Los_Angeles",
+        timeZone: dateOnly ? "UTC" : "America/Los_Angeles",
       })
     : null;
 
@@ -258,8 +265,8 @@ export async function getTaskDetail(
     list: t.list?.name ?? "",
     statuses,
     priority: t.priority?.priority ?? "",
-    dueDate: fmtDate(t.due_date),
-    startDate: fmtDate(t.start_date),
+    dueDate: fmtDate(t.due_date, !t.due_date_time),
+    startDate: fmtDate(t.start_date, !t.start_date_time),
     createdAt: fmtDate(t.date_created),
     creator: t.creator?.username ?? t.creator?.email ?? null,
     assignees: (t.assignees ?? []).map(

@@ -155,7 +155,7 @@ export default function Topbar() {
             className={`w-4 h-4 ${refreshing ? "animate-spin" : ""}`}
           />
           <span className="hidden sm:inline">
-            {refreshing ? "Refreshing…" : "Refresh"}
+            {refreshing ? "Refreshing" : "Refresh"}
           </span>
         </button>
 

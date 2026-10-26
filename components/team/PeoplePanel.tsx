@@ -1,5 +1,6 @@
 "use client";
 
+import Spinner from "@/components/Spinner";
 import { useEffect, useState } from "react";
 import { useMe } from "@/hooks/useMe";
 import Avatar from "@/components/Avatar";
@@ -130,9 +131,9 @@ export default function PeoplePanel() {
             disabled={generating}
             className="btn-primary text-xs py-1.5 px-3 disabled:opacity-50"
           >
-            {generating
-              ? "Generating…"
-              : brief
+            {generating ? (
+              <Spinner label="Generating" />
+            ) : brief
                 ? "Regenerate brief"
                 : "Generate brief"}
           </button>
@@ -197,7 +198,7 @@ function NeedsBrief({
         disabled={generating}
         className="btn-primary text-sm disabled:opacity-50"
       >
-        {generating ? "Generating…" : "Generate brief"}
+        {generating ? <Spinner label="Generating" /> : "Generate brief"}
       </button>
       <p className="text-[11px] text-ink4 mt-3">
         AI synthesizes this week’s reports + ClickUp load into

@@ -1,5 +1,6 @@
 "use client";
 
+import Spinner from "@/components/Spinner";
 import { useEffect, useState } from "react";
 import { useRefresh } from "@/components/RefreshContext";
 import { ShareSlackButton } from "@/components/ShareButtons";
@@ -435,7 +436,7 @@ export default function FilingPanel() {
                 className="btn-primary text-xs py-1.5 px-3 disabled:opacity-50"
                 title="Send each missing member a personalized Slack DM"
               >
-                {reminding ? "Sending…" : "DM Missing Members"}
+                {reminding ? <Spinner label="Sending" /> : "DM Missing Members"}
               </button>
               <ShareSlackButton
                 label="Alert in Channel"

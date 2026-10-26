@@ -1,5 +1,6 @@
 "use client";
 
+import Spinner from "@/components/Spinner";
 import { useState, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 import BrandMark from "@/components/BrandMark";
@@ -96,7 +97,7 @@ function LoginForm() {
           disabled={loading}
           className="w-full bg-ink text-sand font-bold text-base py-4 hover:bg-ink2 transition-colors disabled:opacity-50"
         >
-          {loading ? "Signing in…" : "Sign In"}
+          {loading ? <Spinner label="Signing in" /> : "Sign In"}
         </button>
       </form>
 

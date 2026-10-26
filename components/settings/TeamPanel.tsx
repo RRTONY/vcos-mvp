@@ -1,5 +1,6 @@
 "use client";
 
+import Spinner from "@/components/Spinner";
 import { useEffect, useState } from "react";
 import { useMe } from "@/hooks/useMe";
 import { SkeletonRows } from "@/components/Skeleton";
@@ -427,7 +428,7 @@ export default function TeamPanel() {
                 disabled={saving}
                 className="btn-primary text-xs py-1.5 px-4 disabled:opacity-50"
               >
-                {saving ? "Saving…" : "Save"}
+                {saving ? <Spinner label="Saving" /> : "Save"}
               </button>
               <button
                 onClick={() => setEditingId(null)}

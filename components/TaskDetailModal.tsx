@@ -87,7 +87,7 @@ export default function TaskDetailModal({
               id="task-modal-title"
               className="text-lg font-bold text-ink leading-snug break-words"
             >
-              {task?.name ?? (error ? "Task" : "Loading…")}
+              {task?.name ?? (error ? "Task" : <Spinner label="Loading" />)}
             </h2>
           </div>
           <div className="flex items-center gap-1 shrink-0">
