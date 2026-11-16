@@ -11,6 +11,32 @@ import {
 } from "@/lib/constants";
 import { todayPT } from "@/lib/week-utils";
 
+// Claims today's report for the scheduled run by inserting today's row; returns
+// false if a row for today already exists. The insert is atomic (unique
+// report_date), so when Netlify fires the scheduled function twice within
+// seconds - which posted the brief and reminder to Slack twice - only the
+// first invocation proceeds.
+async function claimScheduledRun(today: string): Promise<boolean> {
+  const { data, error } = await supabase
+    .from("vcos_daily_reports")
+    .upsert(
+      {
+        report_date: today,
+        reports_filed: [],
+        reports_missing: [],
+        overdue_count: 0,
+        urgent_count: 0,
+        total_tasks: 0,
+        team_hours: {},
+        system_health: {},
+      },
+      { onConflict: "report_date", ignoreDuplicates: true },
+    )
+    .select("id");
+  if (error) throw new Error(error.message);
+  return (data?.length ?? 0) > 0;
+}
+
 async function generateDailyReport() {
   const today = todayPT();
   const baseUrl =
@@ -203,6 +229,14 @@ export async function POST(req: NextRequest) {
   }
 
   try {
+    // Scheduled runs post at most once per day; the admin "run now" button
+    // still regenerates and reposts on demand.
+    if (isScheduled && !(await claimScheduledRun(todayPT()))) {
+      return NextResponse.json({
+        ok: true,
+        skipped: "already ran today",
+      });
+    }
     const result = await generateDailyReport();
     return NextResponse.json({ ok: true, ...result });
   } catch (e) {
