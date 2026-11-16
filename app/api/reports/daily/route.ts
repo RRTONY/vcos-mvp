@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { supabase } from "@/lib/supabase";
 import { setCache } from "@/lib/api-cache";
 import { buildClickUpSnapshot } from "@/lib/clickup";
-import { buildSlackSnapshot } from "@/lib/slack";
+import { buildSlackSnapshot, postMessage } from "@/lib/slack";
 import { buildWebWorkSnapshot } from "@/lib/webwork";
 import { buildFirefliesSnapshot } from "@/lib/fireflies";
 import {
@@ -159,17 +159,15 @@ async function generateDailyReport() {
   ].join("\n");
 
   let slackTs: string | undefined;
+  const slackErrors: string[] = [];
   if (slackToken) {
-    const res = await fetch("https://slack.com/api/chat.postMessage", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${slackToken}`,
-      },
-      body: JSON.stringify({ channel, text: slackMsg }),
-    });
-    const d = await res.json();
-    slackTs = d.ts;
+    // Each post is independent - a failed brief must not block the reminder.
+    try {
+      const d = (await postMessage(channel, slackMsg)) as { ts?: string };
+      slackTs = d.ts;
+    } catch (e) {
+      slackErrors.push(`brief: ${e instanceof Error ? e.message : String(e)}`);
+    }
     // Store slack_message_ts
     if (slackTs) {
       await supabase
@@ -193,19 +191,16 @@ async function generateDailyReport() {
         `\`\`\``,
       ].join("\n");
 
-      await fetch("https://slack.com/api/chat.postMessage", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${slackToken}`,
-        },
-        body: JSON.stringify({
-          channel: WEEKLY_REPORTS_CHANNEL,
-          text: reminderMsg,
-        }),
-      });
+      try {
+        await postMessage(WEEKLY_REPORTS_CHANNEL, reminderMsg);
+      } catch (e) {
+        slackErrors.push(
+          `reminder: ${e instanceof Error ? e.message : String(e)}`,
+        );
+      }
     }
   }
+  if (slackErrors.length) console.error("[daily-report]", slackErrors);
 
   return {
     date: today,
@@ -215,6 +210,7 @@ async function generateDailyReport() {
     urgentCount,
     totalHours,
     slackTs,
+    slackErrors,
   };
 }
 

@@ -78,11 +78,19 @@ export async function runMorningBrief(): Promise<{
         month: "long",
         day: "numeric",
       });
-      await postMessage(
-        channel,
-        `:sunrise: *VCoS-AI - Morning Brief · ${today}*\n\n${toSlackMrkdwn(text)}`,
-      );
-      posted = true;
+      // A failed Slack post (e.g. bot not in the channel) is reported back but
+      // isn't a generation failure - the brief itself is cached and shown.
+      try {
+        await postMessage(
+          channel,
+          `:sunrise: *VCoS-AI - Morning Brief · ${today}*\n\n${toSlackMrkdwn(text)}`,
+        );
+        posted = true;
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : "Slack post failed";
+        console.error("[morning-brief]", msg);
+        return { ok: true, posted: false, text, error: msg };
+      }
     }
     return { ok: true, posted, text };
   } catch (err) {

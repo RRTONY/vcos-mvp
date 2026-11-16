@@ -27,7 +27,13 @@ export async function postMessage(channel: string, text: string) {
     body: JSON.stringify({ channel, text }),
   });
   if (!res.ok) throw new Error(`Slack postMessage ${res.status}`);
-  return res.json();
+  // Slack answers HTTP 200 with { ok: false, error } for failures such as
+  // channel_not_found / not_in_channel - surface those instead of treating the
+  // post as sent.
+  const data = await res.json();
+  if (!data.ok)
+    throw new Error(`Slack postMessage to ${channel}: ${data.error ?? "failed"}`);
+  return data;
 }
 
 export async function authTest() {
