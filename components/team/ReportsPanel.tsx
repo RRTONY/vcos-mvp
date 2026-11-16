@@ -5,6 +5,10 @@ import type { WebWorkMember } from "@/lib/types";
 import { useMe } from "@/hooks/useMe";
 import WeekCalendar from "@/components/WeekCalendar";
 import {
+  MarkSubmittedButton,
+  UndoMarkButton,
+} from "@/components/team/MarkSubmittedButton";
+import {
   FiCheck,
   FiAlertTriangle,
 } from "react-icons/fi";
@@ -38,6 +42,9 @@ interface WeeklyReportFull {
   went_well: string | null;
   support_needed: string | null;
   whats_new: string | null;
+  // Set when an admin marked the report as submitted (shared outside VCoS) -
+  // the row then has no content. Null for reports filed through VCoS.
+  marked_submitted_by: string | null;
   created_at: string;
   ai_analysis: {
     summary: string;
@@ -80,10 +87,14 @@ function WeeklyReportCard({
   r,
   weekMonday,
   isMine,
+  canUndoMark,
+  onChanged,
 }: {
   r: WeeklyReportFull;
   weekMonday: Date;
   isMine: boolean;
+  canUndoMark: boolean;
+  onChanged: () => void;
 }) {
   const [open, setOpen] = useState(false);
   const submittedAt = new Date(r.created_at);
@@ -120,6 +131,14 @@ function WeeklyReportCard({
           >
             {meta.label}
           </span>
+          {r.marked_submitted_by && (
+            <span
+              className="text-[10px] font-bold ml-2 text-ink3 border border-sand3 px-1.5 py-0.5"
+              title="Shared outside VCoS - marked as submitted by an admin"
+            >
+              MARKED
+            </span>
+          )}
         </div>
         {r.win && (
           <span className="text-xs text-ink3 truncate hidden sm:block max-w-xs italic">
@@ -137,6 +156,24 @@ function WeeklyReportCard({
 
       {open && (
         <div className="border-t border-sand3 px-4 py-4 space-y-4">
+          {r.marked_submitted_by && (
+            <div className="flex flex-wrap items-center justify-between gap-2 text-sm text-ink3">
+              <span>
+                Report was shared outside VCoS. Marked as submitted by{" "}
+                <span className="font-semibold text-ink2">
+                  {r.marked_submitted_by}
+                </span>
+                , so reminders are stopped for this week.
+              </span>
+              {canUndoMark && (
+                <UndoMarkButton
+                  name={r.submitted_by}
+                  weekMonday={weekMonday}
+                  onDone={onChanged}
+                />
+              )}
+            </div>
+          )}
           {r.ai_analysis && (
             <div className="bg-sand2 p-3 space-y-3">
               <div className="text-xs font-bold uppercase tracking-widest text-ink3">
@@ -461,8 +498,9 @@ export default function ReportsPanel({
                       <div className={`alert ${alertClass}`}>
                         <FiCheck className="w-4 h-4 shrink-0 mt-0.5" />
                         <span>
-                          You filed your report for {fmtWeekLabel(weekMon)} -
-                          submitted {when}
+                          {mine.marked_submitted_by
+                            ? `An admin marked your report for ${fmtWeekLabel(weekMon)} as submitted (shared outside VCoS)`
+                            : `You filed your report for ${fmtWeekLabel(weekMon)} - submitted ${when}`}
                           {st !== "on-time"
                             ? ` (${SUBMIT_STATUS_META[st].label.toLowerCase()})`
                             : ""}
@@ -557,14 +595,30 @@ export default function ReportsPanel({
                       })}
                     </div>
                     {notFiled.length > 0 && !weekReportsLoading && (
-                      <p
-                        className={`text-xs mt-2 ${deadlinePassed ? "text-red-600" : "text-ink4"}`}
-                      >
-                        {deadlinePassed
-                          ? "Not submitted"
-                          : "Pending (due Friday)"}
-                        : {notFiled.map((n) => n.split(" ")[0]).join(", ")}
-                      </p>
+                      <div className="mt-3 border-t border-sand3 pt-2">
+                        <p
+                          className={`text-xs mb-1 ${deadlinePassed ? "text-red-600" : "text-ink4"}`}
+                        >
+                          {deadlinePassed
+                            ? "Not submitted"
+                            : "Pending (due Friday)"}{" "}
+                          - shared it outside VCoS? Mark it as submitted to
+                          stop reminders.
+                        </p>
+                        {notFiled.map((n) => (
+                          <div
+                            key={n}
+                            className="flex flex-wrap items-center justify-between gap-2 py-1.5"
+                          >
+                            <span className="text-sm font-semibold">{n}</span>
+                            <MarkSubmittedButton
+                              name={n}
+                              weekMonday={weekMon}
+                              onDone={() => fetchSubmittedForWeek(weekMon)}
+                            />
+                          </div>
+                        ))}
+                      </div>
                     )}
                   </div>
                 </div>
@@ -620,6 +674,8 @@ export default function ReportsPanel({
                       r={r}
                       weekMonday={weekMon}
                       isMine={myName === r.submitted_by}
+                      canUndoMark={isAdmin}
+                      onChanged={() => fetchSubmittedForWeek(weekMon)}
                     />
                   ))}
                 </div>

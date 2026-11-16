@@ -6,6 +6,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getTeamMembers } from "@/lib/team-db";
 import { usersList, postMessage } from "@/lib/slack";
+import { reportersForWeek, namesWhoFiled } from "@/lib/weekly-reports-db";
+import { getMondayOfWeekPT } from "@/lib/week-utils";
 
 interface SlackUser {
   id: string;
@@ -40,12 +42,17 @@ export async function POST(req: NextRequest) {
   if (!names.length)
     return NextResponse.json({ error: "names required" }, { status: 400 });
 
-  const [members, slackUsers] = await Promise.all([
+  const [members, slackUsers, reporters] = await Promise.all([
     getTeamMembers(),
     usersList()
       .then((r: { members?: SlackUser[] }) => r.members ?? [])
       .catch(() => [] as SlackUser[]),
+    reportersForWeek(getMondayOfWeekPT()).catch(() => [] as string[]),
   ]);
+
+  // Never nag someone whose report is already in for this week - filed in
+  // VCoS or marked as submitted by an admin since the page was loaded.
+  const alreadyFiled = namesWhoFiled(names, reporters);
 
   // Build email → id and real-name → id maps from the live workspace.
   const byEmail = new Map<string, string>();
@@ -63,6 +70,7 @@ export async function POST(req: NextRequest) {
   const skipped: string[] = [];
 
   for (const name of names) {
+    if (alreadyFiled.includes(name)) continue;
     const m = members.find((x) => x.full_name === name);
     let uid = m?.slack_user_id ?? null;
     if (!uid && m?.email) uid = byEmail.get(m.email.toLowerCase()) ?? null;
@@ -82,5 +90,5 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  return NextResponse.json({ ok: true, dmed, skipped });
+  return NextResponse.json({ ok: true, dmed, skipped, alreadyFiled });
 }

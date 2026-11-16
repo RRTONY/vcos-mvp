@@ -153,6 +153,7 @@ export async function buildSlackMessagesSnapshot(): Promise<{
 
 import { SLACK_CHANNEL_WEEKLY_REPORTS } from "@/lib/constants";
 import { getTeamMembers } from "@/lib/team-db";
+import { reportersForWeek, namesWhoFiled } from "@/lib/weekly-reports-db";
 
 import { getMondayOfWeekPT, fmtWeekRange } from "./week-utils";
 
@@ -250,13 +251,24 @@ export async function buildSlackSnapshot() {
 
   const oldest = String(Math.floor(week1Start.getTime() / 1000));
 
-  const [historyData, membersData, channelsData, teamMembers] =
-    await Promise.all([
-      channelHistory(SLACK_CHANNEL_WEEKLY_REPORTS, oldest),
-      usersList(),
-      conversationsList(),
-      getTeamMembers(),
-    ]);
+  const [
+    historyData,
+    membersData,
+    channelsData,
+    teamMembers,
+    dbWeek1,
+    dbWeek2,
+  ] = await Promise.all([
+    channelHistory(SLACK_CHANNEL_WEEKLY_REPORTS, oldest),
+    usersList(),
+    conversationsList(),
+    getTeamMembers(),
+    // Reports in the weekly_reports table - filed through VCoS or marked as
+    // submitted by an admin - count too, so a report shared outside the
+    // #weeklyreports channel never triggers the daily reminder.
+    reportersForWeek(week1Start).catch(() => [] as string[]),
+    reportersForWeek(week2Start).catch(() => [] as string[]),
+  ]);
 
   const reportMembers = teamMembers.filter((m) => m.files_report);
   const allMemberNames = teamMembers.map((m) => m.full_name);
@@ -302,8 +314,19 @@ export async function buildSlackSnapshot() {
     now.getTime() + 1,
   );
 
-  const filedWeek1 = whoFiled(week1.names, week1.handles, reportMembers);
-  const filedWeek2 = whoFiled(week2.names, week2.handles, reportMembers);
+  const reportNames = reportMembers.map((m) => m.full_name);
+  const filedWeek1 = Array.from(
+    new Set([
+      ...whoFiled(week1.names, week1.handles, reportMembers),
+      ...namesWhoFiled(reportNames, dbWeek1),
+    ]),
+  );
+  const filedWeek2 = Array.from(
+    new Set([
+      ...whoFiled(week2.names, week2.handles, reportMembers),
+      ...namesWhoFiled(reportNames, dbWeek2),
+    ]),
+  );
 
   const filed = Array.from(new Set([...filedWeek1, ...filedWeek2]));
   const missing = allMemberNames.filter(

@@ -8,6 +8,7 @@ import { useMe } from "@/hooks/useMe";
 import { useToast } from "@/components/Toast";
 import { memberFiled } from "@/lib/report-match";
 import { reportDeadlinePassed } from "@/lib/report-status";
+import { MarkSubmittedButton } from "@/components/team/MarkSubmittedButton";
 
 interface CheckState {
   invoiceSubmitted: boolean;
@@ -86,6 +87,8 @@ export default function FilingPanel() {
   });
   const [reminding, setReminding] = useState(false);
   const { refreshKey } = useRefresh();
+  // Bumped after an admin marks a report as submitted, to re-read filing status.
+  const [filingReload, setFilingReload] = useState(0);
 
   // Load team from DB on mount
   useEffect(() => {
@@ -198,7 +201,7 @@ export default function FilingPanel() {
         );
       })
       .catch(() => {});
-  }, [refreshKey]);
+  }, [refreshKey, filingReload]);
 
   useEffect(() => {
     fetch("/api/invoices", { cache: "no-store" })
@@ -424,7 +427,16 @@ export default function FilingPanel() {
                   <div className="text-sm font-bold">{m.name}</div>
                   <div className="text-xs text-ink3">{m.role}</div>
                 </div>
-                <span className="badge-red text-xs">Missing</span>
+                <div className="flex flex-wrap items-center justify-end gap-2">
+                  {isAdmin && (
+                    <MarkSubmittedButton
+                      name={m.name}
+                      weekMonday={mostRecentMonday(new Date())}
+                      onDone={() => setFilingReload((k) => k + 1)}
+                    />
+                  )}
+                  <span className="badge-red text-xs">Missing</span>
+                </div>
               </div>
             ))
           )}

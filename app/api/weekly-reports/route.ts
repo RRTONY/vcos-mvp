@@ -353,6 +353,8 @@ export async function POST(req: NextRequest) {
     whats_new: body.whats_new ?? null,
     ai_analysis: aiAnalysis,
     slack_ts: slackTs,
+    // A real report replaces an admin's "Mark as Submitted" placeholder.
+    marked_submitted_by: null,
   };
 
   // Resubmitting for a week you already filed (e.g. correcting the week you
@@ -406,7 +408,7 @@ export async function GET(req: NextRequest) {
   let query = sb
     .from("weekly_reports")
     .select(
-      "id, submitted_by, week_label, blockers, escalations, priorities, goals_met, win, accomplishments, friction, went_well, support_needed, whats_new, ai_analysis, created_at",
+      "id, submitted_by, week_label, blockers, escalations, priorities, goals_met, win, accomplishments, friction, went_well, support_needed, whats_new, ai_analysis, marked_submitted_by, created_at",
     )
     .order("created_at", { ascending: false })
     .limit(100);
