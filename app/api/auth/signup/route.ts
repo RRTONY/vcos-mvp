@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabase } from "@/lib/supabase";
-import { postMessage } from "@/lib/slack";
-import { SLACK_ADMIN_CHANNEL } from "@/lib/constants";
+import { notifyAdmins } from "@/lib/admin-notify";
 
 export const dynamic = "force-dynamic";
 
@@ -29,8 +28,7 @@ export async function POST(req: NextRequest) {
     // Notify admin on Slack
     try {
       if (process.env.SLACK_BOT_TOKEN) {
-        await postMessage(
-          process.env.SLACK_ADMIN_CHANNEL ?? SLACK_ADMIN_CHANNEL,
+        await notifyAdmins(
           `🔔 New VCOS access request from *${name}*${email ? ` (${email})` : ""}\nRequested username: ${username_requested || "-"}\n${message ? `Message: ${message}` : ""}\nApprove in VCoS → Team & Users → Requests (/settings/people)`,
         );
       }

@@ -8,14 +8,11 @@ import { getTeamMembers } from "@/lib/team-db";
 import { usersList, postMessage } from "@/lib/slack";
 import { reportersForWeek, namesWhoFiled } from "@/lib/weekly-reports-db";
 import { getMondayOfWeekPT } from "@/lib/week-utils";
-
-interface SlackUser {
-  id: string;
-  deleted?: boolean;
-  is_bot?: boolean;
-  real_name?: string;
-  profile?: { email?: string; real_name?: string; display_name?: string };
-}
+import {
+  slackUserIndex,
+  resolveSlackUserId,
+  type SlackUser,
+} from "@/lib/admin-notify";
 
 export async function POST(req: NextRequest) {
   const role = req.headers.get("x-role");
@@ -54,16 +51,7 @@ export async function POST(req: NextRequest) {
   // VCoS or marked as submitted by an admin since the page was loaded.
   const alreadyFiled = namesWhoFiled(names, reporters);
 
-  // Build email → id and real-name → id maps from the live workspace.
-  const byEmail = new Map<string, string>();
-  const byName = new Map<string, string>();
-  for (const u of slackUsers) {
-    if (u.deleted || u.is_bot) continue;
-    const email = u.profile?.email?.toLowerCase();
-    if (email) byEmail.set(email, u.id);
-    const real = (u.profile?.real_name ?? u.real_name ?? "").toLowerCase();
-    if (real) byName.set(real, u.id);
-  }
+  const index = slackUserIndex(slackUsers);
 
   const base = process.env.NEXT_PUBLIC_URL ?? process.env.URL ?? "";
   const dmed: string[] = [];
@@ -72,9 +60,7 @@ export async function POST(req: NextRequest) {
   for (const name of names) {
     if (alreadyFiled.includes(name)) continue;
     const m = members.find((x) => x.full_name === name);
-    let uid = m?.slack_user_id ?? null;
-    if (!uid && m?.email) uid = byEmail.get(m.email.toLowerCase()) ?? null;
-    if (!uid) uid = byName.get(name.toLowerCase()) ?? null;
+    const uid = resolveSlackUserId(m, name, index);
     if (!uid) {
       skipped.push(name);
       continue;

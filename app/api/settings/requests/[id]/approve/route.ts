@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabase } from '@/lib/supabase'
 import { hashPassword, generateTempPassword } from '@/lib/password'
-import { SLACK_ADMIN_CHANNEL } from '@/lib/constants'
+import { notifyAdmins } from '@/lib/admin-notify'
 
 export async function POST(req: NextRequest, { params }: { params: { id: string } }) {
   if (!['admin', 'owner'].includes(req.headers.get('x-role') ?? '')) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
@@ -36,20 +36,14 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
 
   await supabase.from('vcos_signup_requests').update({ status: 'approved' }).eq('id', params.id)
 
-  // Post to Slack
+  // Notify admins on Slack (admin channel, or DMs if the channel fails)
   try {
-    const slackToken = process.env.SLACK_BOT_TOKEN
-    if (slackToken) {
-      await fetch('https://slack.com/api/chat.postMessage', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${slackToken}` },
-        body: JSON.stringify({
-          channel: process.env.SLACK_ADMIN_CHANNEL ?? SLACK_ADMIN_CHANNEL,
-          text: `✅ Access approved for *${req_row.name}*\nUsername: \`${username}\`\nTemp password: \`${tempPassword}\`\nRole: ${role}`,
-        }),
-      })
+    if (process.env.SLACK_BOT_TOKEN) {
+      await notifyAdmins(`✅ Access approved for *${req_row.name}*\nUsername: \`${username}\`\nTemp password: \`${tempPassword}\`\nRole: ${role}`)
     }
-  } catch { /* non-fatal */ }
+  } catch (e) {
+    console.error('[approve] admin Slack notification failed:', e)
+  }
 
   return NextResponse.json({ ok: true, username, tempPassword })
 }
