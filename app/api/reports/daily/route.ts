@@ -124,9 +124,11 @@ async function generateDailyReport() {
     `📊 *VCOS Daily Brief - ${dayLabel}*`,
     ``,
     `✅ Reports Filed (${filed.length}/${filed.length + missing.length}): ${filed.length ? filed.map((n) => n.split(" ")[0]).join(" · ") : "none"}`,
-    missing.length
-      ? `❌ Missing (${missing.length}): ${missing.map((n) => n.split(" ")[0]).join(" · ")}`
-      : `✅ All reports filed`,
+    !slack
+      ? `⚠️ Weekly report status unavailable - Slack data could not be loaded`
+      : missing.length
+        ? `❌ Missing (${missing.length}): ${missing.map((n) => n.split(" ")[0]).join(" · ")}`
+        : `✅ All reports filed`,
     ``,
     `⚠️ CRM: ${overdueCount} overdue of ${totalTasks} tasks · ${urgentCount} urgent`,
     `🕐 Team Hours This Week: ${Math.round(totalHours)}h logged`,

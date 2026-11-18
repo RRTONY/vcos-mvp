@@ -32,7 +32,9 @@ export async function postMessage(channel: string, text: string) {
   // post as sent.
   const data = await res.json();
   if (!data.ok)
-    throw new Error(`Slack postMessage to ${channel}: ${data.error ?? "failed"}`);
+    throw new Error(
+      `Slack postMessage to ${channel}: ${data.error ?? "failed"}`,
+    );
   return data;
 }
 
@@ -46,6 +48,35 @@ export async function channelHistory(
   limit = "100",
 ) {
   return slackGet("conversations.history", { channel, oldest, limit });
+}
+
+/**
+ * Every message in `channel` since `oldest`, following Slack's pagination.
+ * Throws when Slack answers ok:false, so a failed read is never mistaken for
+ * an empty channel (which would mark everyone as missing their report).
+ */
+export async function fullChannelHistory(
+  channel: string,
+  oldest: string,
+): Promise<{ messages: unknown[] }> {
+  const messages: unknown[] = [];
+  let cursor = "";
+  for (let page = 0; page < 20; page++) {
+    const data = await slackGet("conversations.history", {
+      channel,
+      oldest,
+      limit: "200",
+      ...(cursor ? { cursor } : {}),
+    });
+    if (!data.ok)
+      throw new Error(
+        `Slack conversations.history ${channel}: ${data.error ?? "failed"}`,
+      );
+    messages.push(...(data.messages ?? []));
+    cursor = data.response_metadata?.next_cursor ?? "";
+    if (!cursor) break;
+  }
+  return { messages };
 }
 
 export async function userInfo(user: string) {
@@ -171,14 +202,62 @@ export function weekLabel(): string {
   return fmtWeekRange(getMondayOfWeekPT());
 }
 
-function getPostersFromMessages(
-  messages: Array<{
-    user?: string;
-    username?: string;
-    subtype?: string;
-    ts?: string;
-    text?: string;
-  }>,
+export type ChannelMessage = {
+  user?: string;
+  username?: string;
+  subtype?: string;
+  bot_id?: string;
+  ts?: string;
+  text?: string;
+};
+
+// Section names from the Slack template and the VCoS report form. Used to
+// recognise a report posted without the #myweeklyreport tag.
+const REPORT_SECTION_HEADINGS = [
+  "business outcomes",
+  "top goals",
+  "deliverables",
+  "automation",
+  "processes executed",
+  "deals & relationships",
+  "blocked or at risk",
+  "blockers",
+  "escalation",
+  "most interesting",
+  "priorities",
+  "next week",
+  "last week",
+  "win of the week",
+  "most important",
+  "accomplishments",
+  "went well",
+  "go well",
+  "what i need",
+  "what you need",
+  "kudos",
+  "friction",
+  "personal notes",
+  "what's new",
+];
+
+/**
+ * A message counts as a weekly report when it carries #myweeklyreport, or
+ * when a person (not a bot) posts at least 4 numbered report sections.
+ * People sometimes paste their report without the tag (e.g. Ben's Nov 13
+ * report), and that must not trigger daily reminders.
+ */
+export function isWeeklyReportMessage(m: ChannelMessage): boolean {
+  const text = m.text ?? "";
+  if (text.toLowerCase().includes("#myweeklyreport")) return true;
+  if (m.bot_id || m.subtype || !m.user) return false;
+  const sections = (text.match(/^\s*\*?\d{1,2}\.\s+[^\n]{1,80}/gm) ?? [])
+    .map((line) => line.toLowerCase())
+    .filter((line) => REPORT_SECTION_HEADINGS.some((h) => line.includes(h)));
+  return sections.length >= 4;
+}
+
+export function getPostersFromMessages(
+  messages: ChannelMessage[],
   userMap: Record<string, string>,
   handleMap: Record<string, string>,
   fromTs: number,
@@ -186,11 +265,7 @@ function getPostersFromMessages(
 ) {
   const window = messages.filter((m) => {
     const ts = parseFloat(m.ts ?? "0") * 1000;
-    return (
-      ts >= fromTs &&
-      ts < toTs &&
-      (m.text ?? "").toLowerCase().includes("#myweeklyreport")
-    );
+    return ts >= fromTs && ts < toTs && isWeeklyReportMessage(m);
   });
   return {
     names: Array.from(
@@ -227,7 +302,7 @@ function matchesAlias(text: string, alias: string): boolean {
   );
 }
 
-function whoFiled(
+export function whoFiled(
   names: string[],
   handles: string[],
   reportMembers: Array<{ full_name: string; slack_aliases: string[] }>,
@@ -265,7 +340,7 @@ export async function buildSlackSnapshot() {
     dbWeek1,
     dbWeek2,
   ] = await Promise.all([
-    channelHistory(SLACK_CHANNEL_WEEKLY_REPORTS, oldest),
+    fullChannelHistory(SLACK_CHANNEL_WEEKLY_REPORTS, oldest),
     usersList(),
     conversationsList(),
     getTeamMembers(),
@@ -275,6 +350,13 @@ export async function buildSlackSnapshot() {
     reportersForWeek(week1Start).catch(() => [] as string[]),
     reportersForWeek(week2Start).catch(() => [] as string[]),
   ]);
+
+  // Without the user list, people's own posts can't be tied to a name and
+  // everyone who posted manually would be flagged as missing.
+  if (!(membersData as { ok?: boolean }).ok)
+    throw new Error(
+      `Slack users.list: ${(membersData as { error?: string }).error ?? "failed"}`,
+    );
 
   const reportMembers = teamMembers.filter((m) => m.files_report);
   const allMemberNames = teamMembers.map((m) => m.full_name);
@@ -296,13 +378,8 @@ export async function buildSlackSnapshot() {
     }
   }
 
-  const messages: Array<{
-    user?: string;
-    username?: string;
-    subtype?: string;
-    ts?: string;
-    text?: string;
-  }> = (historyData as { messages?: typeof messages }).messages ?? [];
+  const messages: ChannelMessage[] =
+    (historyData as { messages?: typeof messages }).messages ?? [];
 
   // Week 1 and Week 2 filing detection
   const week1 = getPostersFromMessages(
@@ -342,7 +419,7 @@ export async function buildSlackSnapshot() {
   // Group tagged reports by day (YYYY-MM-DD)
   const dayCounts: Record<string, number> = {};
   for (const msg of messages) {
-    if (msg.ts && (msg.text ?? "").toLowerCase().includes("#myweeklyreport")) {
+    if (msg.ts && isWeeklyReportMessage(msg)) {
       const d = new Date(parseFloat(msg.ts) * 1000).toISOString().slice(0, 10);
       dayCounts[d] = (dayCounts[d] ?? 0) + 1;
     }
