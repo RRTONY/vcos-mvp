@@ -79,6 +79,52 @@ export async function fullChannelHistory(
   return { messages };
 }
 
+/**
+ * Channel history since `oldest` plus every thread reply posted since then,
+ * so a report someone posts as a reply (e.g. under the daily reminder) is
+ * seen too. Replies already broadcast to the channel are not duplicated.
+ */
+export async function channelHistoryWithReplies(
+  channel: string,
+  oldest: string,
+): Promise<{ messages: unknown[] }> {
+  const { messages } = await fullChannelHistory(channel, oldest);
+  type Parent = { ts?: string; reply_count?: number; latest_reply?: string };
+  const threads = (messages as Parent[]).filter(
+    (m) =>
+      m.ts &&
+      (m.reply_count ?? 0) > 0 &&
+      parseFloat(m.latest_reply ?? "0") >= parseFloat(oldest),
+  );
+  const seen = new Set((messages as Parent[]).map((m) => m.ts));
+  // Sequential: a handful of threads per fortnight, and conversations.replies
+  // is rate limited.
+  for (const parent of threads) {
+    let cursor = "";
+    for (let page = 0; page < 10; page++) {
+      const data = await slackGet("conversations.replies", {
+        channel,
+        ts: parent.ts!,
+        oldest,
+        limit: "200",
+        ...(cursor ? { cursor } : {}),
+      });
+      if (!data.ok)
+        throw new Error(
+          `Slack conversations.replies ${channel}: ${data.error ?? "failed"}`,
+        );
+      for (const r of (data.messages ?? []) as Parent[]) {
+        if (!r.ts || seen.has(r.ts)) continue; // parent or broadcast reply
+        seen.add(r.ts);
+        messages.push(r);
+      }
+      cursor = data.response_metadata?.next_cursor ?? "";
+      if (!cursor) break;
+    }
+  }
+  return { messages };
+}
+
 export async function userInfo(user: string) {
   return slackGet("users.info", { user });
 }
@@ -240,20 +286,36 @@ const REPORT_SECTION_HEADINGS = [
   "what's new",
 ];
 
+// A short first line that names the post as a report, e.g. "Ben's weekly
+// update", "Weekly Progress Report 10th - 14th August", "My weekly report".
+const REPORT_TITLE = /weekly (report|update)|progress report|status report/i;
+
 /**
  * A message counts as a weekly report when it carries #myweeklyreport, or
- * when a person (not a bot) posts at least 4 numbered report sections.
- * People sometimes paste their report without the tag (e.g. Ben's Nov 13
- * report), and that must not trigger daily reminders.
+ * when a person (not a bot) posts something report-shaped without the tag
+ * (e.g. Ben's Nov 13 report) - that must not trigger daily reminders:
+ *   - at least 4 numbered report sections, or
+ *   - a short report-style title line plus 2+ sections or a substantial body.
  */
 export function isWeeklyReportMessage(m: ChannelMessage): boolean {
   const text = m.text ?? "";
   if (text.toLowerCase().includes("#myweeklyreport")) return true;
-  if (m.bot_id || m.subtype || !m.user) return false;
+  // thread_broadcast = a thread reply also sent to the channel; still a
+  // person's own post. Other subtypes (joins, bot posts, ...) never count.
+  if (m.bot_id || !m.user) return false;
+  if (m.subtype && m.subtype !== "thread_broadcast") return false;
   const sections = (text.match(/^\s*\*?\d{1,2}\.\s+[^\n]{1,80}/gm) ?? [])
     .map((line) => line.toLowerCase())
     .filter((line) => REPORT_SECTION_HEADINGS.some((h) => line.includes(h)));
-  return sections.length >= 4;
+  if (sections.length >= 4) return true;
+  // A title, not a sentence: "Yes, let's keep ... for the status report."
+  // is a chat reply, "Ben's weekly update" is a report heading.
+  const firstLine = (text.trim().split("\n")[0] ?? "").replace(/[*_\s]+$/, "");
+  const hasTitle =
+    firstLine.length <= 80 &&
+    !/[.?!]$/.test(firstLine) &&
+    REPORT_TITLE.test(firstLine);
+  return hasTitle && (sections.length >= 2 || text.length >= 400);
 }
 
 export function getPostersFromMessages(
@@ -340,7 +402,7 @@ export async function buildSlackSnapshot() {
     dbWeek1,
     dbWeek2,
   ] = await Promise.all([
-    fullChannelHistory(SLACK_CHANNEL_WEEKLY_REPORTS, oldest),
+    channelHistoryWithReplies(SLACK_CHANNEL_WEEKLY_REPORTS, oldest),
     usersList(),
     conversationsList(),
     getTeamMembers(),
