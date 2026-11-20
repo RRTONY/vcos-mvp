@@ -22,10 +22,8 @@
   # REQUIRED env vars - set in Netlify UI → Site Settings → Environment Variables:
   #
   #   AUTH_SECRET              = any long random string (signs session cookies)
-  #   AUTH_USERS               = tony:vcos2026:admin,ramprate:vcos2026:admin,kim:vcos2026:user,chase:vcos2026:user,rob:vcos2026:user,alex:vcos2026:user,josh:vcos2026:user,daniel:vcos2026:user,ben:vcos2026:user
-  #                              Format: username:password:role
-  #                              role = 'admin' (sees rates + amounts) or 'user' (rates hidden)
-  #                              To add: append ,newuser:pass:user and redeploy
+  #   VCOS_DEFAULT_PASSWORD    = starting password for new users / admin resets
+  #                              (users change it at /account/password; users live in Supabase vcos_users)
   #
   #   WEBWORK_API_KEY          = eyJ0eXAiOiJKV1QiLC... (JWT token from WebWork)
   #   WEBWORK_COMPANY_ID       = 301393
