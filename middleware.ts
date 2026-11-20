@@ -4,12 +4,20 @@ import { COOKIE_NAME, verifySession } from "@/lib/auth";
 export async function middleware(req: NextRequest) {
   // Skip auth for login page and auth API routes
   const { pathname } = req.nextUrl;
+  // x-user / x-role are identity headers that ONLY this middleware may set.
+  // Strip any copy the caller sent, so routes that skip the session check
+  // below (cron, webhooks, /api/auth/*) can never see a forged role.
+  const cleanHeaders = new Headers(req.headers);
+  cleanHeaders.delete("x-user");
+  cleanHeaders.delete("x-role");
+  const passThrough = () =>
+    NextResponse.next({ request: { headers: cleanHeaders } });
   // Allow cron POST requests authenticated by x-cron-secret header
   if (
     req.method === "POST" &&
     req.headers.get("x-cron-secret") === process.env.CRON_SECRET
   ) {
-    return NextResponse.next();
+    return passThrough();
   }
   // Scheduled Briefing Room jobs authenticate with their own key; the route
   // itself re-checks it before granting automation access.
@@ -18,12 +26,12 @@ export async function middleware(req: NextRequest) {
     process.env.BRIEFING_API_KEY &&
     req.headers.get("x-briefing-key") === process.env.BRIEFING_API_KEY
   ) {
-    return NextResponse.next();
+    return passThrough();
   }
 
   // ClickUp webhook - no session; the route verifies ClickUp's HMAC signature.
   if (pathname === "/api/clickup-webhook" && req.method === "POST") {
-    return NextResponse.next();
+    return passThrough();
   }
 
   if (
@@ -34,7 +42,7 @@ export async function middleware(req: NextRequest) {
     pathname === "/favicon.ico" ||
     pathname === "/robots.txt"
   ) {
-    return NextResponse.next();
+    return passThrough();
   }
 
   const token = req.cookies.get(COOKIE_NAME)?.value;
@@ -42,10 +50,9 @@ export async function middleware(req: NextRequest) {
     const session = await verifySession(token);
     if (session) {
       // Forward username + role as REQUEST headers so API routes can read them
-      const requestHeaders = new Headers(req.headers);
-      requestHeaders.set("x-user", session.username);
-      requestHeaders.set("x-role", session.role);
-      return NextResponse.next({ request: { headers: requestHeaders } });
+      cleanHeaders.set("x-user", session.username);
+      cleanHeaders.set("x-role", session.role);
+      return NextResponse.next({ request: { headers: cleanHeaders } });
     }
   }
 

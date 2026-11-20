@@ -170,6 +170,12 @@ export default function Topbar() {
                 {me.role}
               </span>
             </div>
+            <a
+              href="/account/password"
+              className="px-3 py-1.5 rounded-[10px] border border-white/30 bg-white/10 text-sm font-semibold text-white hover:bg-white/20 transition-colors"
+            >
+              Password
+            </a>
             <button
               onClick={handleLogout}
               className="px-3 py-1.5 rounded-[10px] border border-white/30 bg-white/10 text-sm font-semibold text-white hover:bg-white/20 transition-colors"

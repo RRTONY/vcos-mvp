@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabase } from "@/lib/supabase";
 import { hashPassword, generateTempPassword } from "@/lib/password";
+import { COOKIE_NAME, verifySession } from "@/lib/auth";
 
 export const dynamic = "force-dynamic";
 
@@ -11,7 +12,6 @@ const SEED_USERS: { username: string; role: "owner" | "admin" | "user" }[] = [
   { username: "tony", role: "owner" },
   { username: "ramprate", role: "owner" },
   { username: "kim", role: "admin" },
-  { username: "chase", role: "admin" },
   { username: "rob", role: "user" },
   { username: "alex", role: "user" },
   { username: "josh", role: "user" },
@@ -20,7 +20,12 @@ const SEED_USERS: { username: string; role: "owner" | "admin" | "user" }[] = [
 ];
 
 export async function POST(req: NextRequest) {
-  if (!["admin", "owner"].includes(req.headers.get("x-role") ?? "")) {
+  // Middleware lets every /api/auth/* request through without a session and
+  // does not overwrite x-role there, so a caller could send "x-role: admin"
+  // themselves. Check the signed session cookie instead.
+  const token = req.cookies.get(COOKIE_NAME)?.value;
+  const session = token ? await verifySession(token) : null;
+  if (!session || !["admin", "owner"].includes(session.role)) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
