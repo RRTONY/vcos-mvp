@@ -11,9 +11,14 @@ export async function verifyPassword(password: string, hash: string): Promise<bo
   return bcrypt.compare(password, hash)
 }
 
-// Temp passwords are handed out by admins, so they must be unguessable:
-// crypto-random (not Math.random) and 14 chars from a 32-char set (~70 bits).
+// Starting password for new users, admin resets and approved requests.
+// Uses the team's shared default from the VCOS_DEFAULT_PASSWORD env var
+// (set in .env / Netlify, never in this public repo). Users can change it
+// at /account/password. If the env var is unset, falls back to a
+// crypto-random 14-char password (~70 bits).
 export function generateTempPassword(): string {
+  const shared = process.env.VCOS_DEFAULT_PASSWORD?.trim()
+  if (shared) return shared
   const chars = 'abcdefghijkmnpqrstuvwxyz23456789'
   return Array.from({ length: 14 }, () => chars[randomInt(chars.length)]).join('')
 }
