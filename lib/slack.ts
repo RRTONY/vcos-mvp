@@ -238,11 +238,13 @@ import { SLACK_CHANNEL_WEEKLY_REPORTS } from "@/lib/constants";
 import { getTeamMembers } from "@/lib/team-db";
 import { reportersForWeek, namesWhoFiled } from "@/lib/weekly-reports-db";
 
-import { getMondayOfWeekPT, fmtWeekRange } from "./week-utils";
-
-function getMostRecentMonday(from: Date): Date {
-  return getMondayOfWeekPT(from);
-}
+import {
+  getMondayOfWeekPT,
+  fmtWeekRange,
+  shiftWeeks,
+  weekLabelVariants,
+} from "./week-utils";
+import { reportDeadlinePassed } from "./report-status";
 
 export function weekLabel(): string {
   return fmtWeekRange(getMondayOfWeekPT());
@@ -318,17 +320,44 @@ export function isWeeklyReportMessage(m: ChannelMessage): boolean {
   return hasTitle && (sections.length >= 2 || text.length >= 400);
 }
 
+// "*Weekly Report - <name> - <week label>*" header of a report submitted
+// through VCoS (app/api/weekly-reports). Continuation posts end "(continued)".
+const VCOS_REPORT_HEADER =
+  /\*Weekly Report - (.+?) - (.+?)(?: \(continued\))?\*/;
+
+/**
+ * Is this report message FOR the week starting `weekMonday`?
+ *
+ * A report is often posted after its week ends (Rob's Nov 9-13 report went in
+ * on Mon Nov 16), so the posting date alone must not decide the week - that
+ * made a late report for one week count as on time for the next, and the
+ * reminder skipped people who had not filed. VCoS posts name their week in the
+ * header, so that wins. A hand-written post counts for the week it was most
+ * likely written for: anything from Thursday through the following Wednesday
+ * belongs to that Thursday's week (posting time shifted back 3 days).
+ */
+export function isReportForWeek(m: ChannelMessage, weekMonday: Date): boolean {
+  const label = VCOS_REPORT_HEADER.exec(m.text ?? "")?.[2];
+  if (label) return weekLabelVariants(weekMonday).includes(label.trim());
+  const ts = parseFloat(m.ts ?? "0") * 1000;
+  if (!ts) return false;
+  const shifted = new Date(ts - 3 * 24 * 60 * 60 * 1000);
+  return (
+    getMondayOfWeekPT(shifted).getTime() ===
+    getMondayOfWeekPT(weekMonday).getTime()
+  );
+}
+
+/** Names/handles of everyone who posted a weekly report FOR the given week. */
 export function getPostersFromMessages(
   messages: ChannelMessage[],
   userMap: Record<string, string>,
   handleMap: Record<string, string>,
-  fromTs: number,
-  toTs: number,
+  weekMonday: Date,
 ) {
-  const window = messages.filter((m) => {
-    const ts = parseFloat(m.ts ?? "0") * 1000;
-    return ts >= fromTs && ts < toTs && isWeeklyReportMessage(m);
-  });
+  const window = messages.filter(
+    (m) => isWeeklyReportMessage(m) && isReportForWeek(m, weekMonday),
+  );
   return {
     names: Array.from(
       new Set([
@@ -337,7 +366,7 @@ export function getPostersFromMessages(
         // the poster is always "VCOS Bot" - the real author is only in the
         // "*Weekly Report - <name> - <week>*" header (app/api/weekly-reports).
         ...window
-          .map((m) => /\*Weekly Report - (.+?) - /.exec(m.text ?? "")?.[1])
+          .map((m) => VCOS_REPORT_HEADER.exec(m.text ?? "")?.[1])
           .filter((n): n is string => !!n),
         ...window
           .filter((m) => m.subtype === "bot_message" && m.username)
@@ -387,12 +416,22 @@ export function whoFiled(
 export async function buildSlackSnapshot() {
   const now = new Date();
 
-  // Week 2 window: this Mon → now; Week 1 window: last Mon → this Mon
-  const week2Start = getMostRecentMonday(now);
-  const week1Start = new Date(week2Start);
-  week1Start.setDate(week2Start.getDate() - 7);
+  // Week 2 = this week, Week 1 = last week.
+  const week2Start = getMondayOfWeekPT(now);
+  const week1Start = shiftWeeks(week2Start, -1);
+  // The week whose report is currently due: this week once its Friday
+  // deadline has passed (Sat/Sun), otherwise last week. "Missing" is judged
+  // against this one week only - filing this week's report must not hide a
+  // missing report for last week.
+  const dueStart = reportDeadlinePassed(week2Start, now)
+    ? week2Start
+    : week1Start;
 
-  const oldest = String(Math.floor(week1Start.getTime() / 1000));
+  // Hand-written reports for last week can be posted as early as its
+  // Thursday, so read from then.
+  const oldest = String(
+    Math.floor((week1Start.getTime() - 4 * 24 * 60 * 60 * 1000) / 1000),
+  );
 
   const [
     historyData,
@@ -444,20 +483,8 @@ export async function buildSlackSnapshot() {
     (historyData as { messages?: typeof messages }).messages ?? [];
 
   // Week 1 and Week 2 filing detection
-  const week1 = getPostersFromMessages(
-    messages,
-    userMap,
-    handleMap,
-    week1Start.getTime(),
-    week2Start.getTime(),
-  );
-  const week2 = getPostersFromMessages(
-    messages,
-    userMap,
-    handleMap,
-    week2Start.getTime(),
-    now.getTime() + 1,
-  );
+  const week1 = getPostersFromMessages(messages, userMap, handleMap, week1Start);
+  const week2 = getPostersFromMessages(messages, userMap, handleMap, week2Start);
 
   const reportNames = reportMembers.map((m) => m.full_name);
   const filedWeek1 = Array.from(
@@ -473,7 +500,7 @@ export async function buildSlackSnapshot() {
     ]),
   );
 
-  const filed = Array.from(new Set([...filedWeek1, ...filedWeek2]));
+  const filed = dueStart === week2Start ? filedWeek2 : filedWeek1;
   const missing = allMemberNames.filter(
     (n) => reportMembers.some((m) => m.full_name === n) && !filed.includes(n),
   );
@@ -490,20 +517,15 @@ export async function buildSlackSnapshot() {
     .sort(([a], [b]) => a.localeCompare(b))
     .map(([date, count]) => ({ date, count }));
 
-  const fmtDate = (d: Date) =>
-    d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
-  const fri1 = new Date(week1Start);
-  fri1.setDate(week1Start.getDate() + 4);
-  const fri2 = new Date(week2Start);
-  fri2.setDate(week2Start.getDate() + 4);
-  const week1Label = `${fmtDate(week1Start)}–${fmtDate(fri1)}`;
-  const week2Label = `${fmtDate(week2Start)}–${fmtDate(fri2)}`;
+  const week1Label = fmtWeekRange(week1Start);
+  const week2Label = fmtWeekRange(week2Start);
 
   return {
     weeklyReports: {
       filed,
       missing,
-      week: weekLabel(),
+      // The week `filed` / `missing` refer to (the report currently due).
+      week: fmtWeekRange(dueStart),
       filedWeek1,
       filedWeek2,
       week1Label,
