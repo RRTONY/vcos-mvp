@@ -74,6 +74,8 @@ async function generateDailyReport() {
 
   const filed: string[] = slack?.weeklyReports?.filed ?? [];
   const missing: string[] = slack?.weeklyReports?.missing ?? [];
+  // The week filed/missing refer to - the report currently due.
+  const reportWeek: string = slack?.weeklyReports?.week ?? "";
   const overdueCount = clickup?.overdue ?? 0;
   const urgentCount = clickup?.urgent ?? 0;
   const totalTasks = clickup?.totalTasks ?? 0;
@@ -123,7 +125,7 @@ async function generateDailyReport() {
   const slackMsg = [
     `📊 *VCOS Daily Brief - ${dayLabel}*`,
     ``,
-    `✅ Reports Filed (${filed.length}/${filed.length + missing.length}): ${filed.length ? filed.map((n) => n.split(" ")[0]).join(" · ") : "none"}`,
+    `✅ Reports Filed${reportWeek ? ` for ${reportWeek}` : ""} (${filed.length}/${filed.length + missing.length}): ${filed.length ? filed.map((n) => n.split(" ")[0]).join(" · ") : "none"}`,
     !slack
       ? `⚠️ Weekly report status unavailable - Slack data could not be loaded`
       : missing.length
@@ -184,7 +186,7 @@ async function generateDailyReport() {
       const reminderMsg = [
         `📋 *Weekly Report Reminder - ${dayLabel}*`,
         ``,
-        `${names} - your weekly report hasn't been submitted yet this week.`,
+        `${names} - your weekly report${reportWeek ? ` for ${reportWeek}` : ""} hasn't been submitted yet.`,
         ``,
         `Please post your report in this channel using the template below. Make sure to include *#myweeklyreport* at the top so it's counted in the system.`,
         ``,
