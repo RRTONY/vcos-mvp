@@ -33,6 +33,12 @@ export function bucketFor(dueTs: number | null | undefined, now: Date = new Date
   return null
 }
 
+/** Pacific Time calendar days a due date is past: 3 = due 3 days ago,
+ *  0 = due today, -1 = due tomorrow. Null when there is no due date. */
+export function daysOverdue(dueTs: number | null | undefined, now: Date = new Date()): number | null {
+  return dueTs ? dayDiff(ptDay(dueTs), ptDay(now.getTime())) : null
+}
+
 /** "3 days overdue", "1 day overdue", "Due today", "Due tomorrow" or
  *  "Due Nov 30" - counted in Pacific Time calendar days. Empty if no due date. */
 export function dueLabel(dueTs: number | null | undefined, now: Date = new Date()): string {

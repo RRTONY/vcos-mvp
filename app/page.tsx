@@ -23,7 +23,8 @@ import {
 import { isReportFrom } from "@/lib/report-match";
 import TaskBuckets from "@/components/TaskBuckets";
 import Avatar from "@/components/Avatar";
-import Sparkline from "@/components/Sparkline";
+import AdminDashboard from "@/components/dashboard/AdminDashboard";
+import Spinner from "@/components/Spinner";
 
 interface TeamMember {
   name: string;
@@ -35,6 +36,7 @@ interface WeeklyReportEntry {
   id: string;
   submitted_by: string;
   created_at: string;
+  marked_submitted_by?: string | null;
 }
 
 import {
@@ -262,9 +264,6 @@ export default function DashboardPage() {
     );
     setGreeting(h < 12 ? "Good morning" : h < 17 ? "Good afternoon" : "Good evening");
   }, []);
-  const [daily, setDaily] = useState<
-    { overdue_count: number; urgent_count: number; reports_filed: string[] }[]
-  >([]);
   const [okrs, setOkrs] = useState<OKR[]>([]);
   const { refreshKey, freshClickUp, liveClickUp } = useRefresh();
   const prevKey = useRef(refreshKey);
@@ -274,19 +273,8 @@ export default function DashboardPage() {
   );
   const [weeklyReports, setWeeklyReports] = useState<WeeklyReportEntry[]>([]);
   const [reportsLoading, setReportsLoading] = useState(false);
-
-  // Daily history → KPI trend sparklines (admin only; team-wide series).
-  useEffect(() => {
-    if (!isAdmin) return;
-    fetch("/api/reports/daily", { cache: "no-store" })
-      .then((r) => r.json())
-      .then((d) => setDaily(Array.isArray(d) ? d : []))
-      .catch(() => {});
-  }, [isAdmin]);
-  const trendSeries = [...daily].reverse(); // oldest → newest
-  const filedTrend = trendSeries.map((d) => d.reports_filed?.length ?? 0);
-  const overdueTrend = trendSeries.map((d) => d.overdue_count ?? 0);
-  const urgentTrend = trendSeries.map((d) => d.urgent_count ?? 0);
+  // Bumped after an admin marks a report done (or undoes it) to reload the week.
+  const [reportsVersion, setReportsVersion] = useState(0);
 
   useEffect(() => {
     fetch("/api/team", { cache: "no-store" })
@@ -397,7 +385,7 @@ export default function DashboardPage() {
         setReportsLoading(false);
       })
       .catch(() => setReportsLoading(false));
-  }, [selectedMonday]);
+  }, [selectedMonday, reportsVersion]);
 
   const currentMonday = getMostRecentMonday(new Date());
   const isCurrentWeek = selectedMonday.getTime() === currentMonday.getTime();
@@ -650,6 +638,39 @@ export default function DashboardPage() {
     { href: "/team", t: "Team overview", s: "Reports, hours, people and decisions" },
   ];
 
+  // Admins get the redesigned dashboard (components/dashboard/); everyone else
+  // keeps the original one below. Wait for the role so admins never see the
+  // old layout flash first.
+  if (!me)
+    return (
+      <div className="py-16 flex justify-center text-sm text-ink3">
+        <Spinner label="Loading your dashboard" />
+      </div>
+    );
+  if (isAdmin)
+    return (
+      <AdminDashboard
+        greeting={greeting}
+        myName={me?.fullName ?? null}
+        members={team}
+        clickup={clickup}
+        webwork={webwork}
+        reports={weeklyReports}
+        okrs={okrs}
+        canEditOkrs={isOwner}
+        onSaveOkr={saveOkr}
+        monday={selectedMonday}
+        isCurrentWeek={isCurrentWeek}
+        onPrevWeek={() => setSelectedMonday((d) => shiftWeeks(d, -1))}
+        onNextWeek={() => setSelectedMonday((d) => shiftWeeks(d, 1))}
+        onThisWeek={() => setSelectedMonday(getMostRecentMonday(new Date()))}
+        onReportsChanged={() => setReportsVersion((v) => v + 1)}
+        loading={loading}
+        reportsLoading={reportsLoading}
+        shareMsg={shareMsg}
+      />
+    );
+
   return (
     <div>
       {/* Greeting */}
@@ -832,22 +853,6 @@ export default function DashboardPage() {
             />
           ) : (
             <p className="text-sm text-ink3">No task data</p>
-          )}
-          {isAdmin && (filedTrend.length > 1 || overdueTrend.length > 1) && (
-            <div className="grid grid-cols-3 gap-3 pt-2 border-t border-sand4">
-              {[
-                { l: "Reports filed", v: filedTrend, c: "#1C7C54" },
-                { l: "Urgent", v: urgentTrend, c: "#B8322B" },
-                { l: "Overdue", v: overdueTrend, c: "#B7791F" },
-              ].map((t) => (
-                <div key={t.l}>
-                  <div className="text-xs font-semibold text-ink3 mb-1">
-                    {t.l} trend
-                  </div>
-                  <Sparkline values={t.v} color={t.c} height={22} />
-                </div>
-              ))}
-            </div>
           )}
         </section>
         <section className="panel">
