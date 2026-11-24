@@ -113,9 +113,11 @@ function MemberCard({
   } | null;
 }) {
   const [open, setOpen] = useState(false);
+  // On time % = (open - overdue) / open. No open tasks = no figure (a dash),
+  // never 0% or 100%.
   const flow =
     stats && stats.total > 0
-      ? Math.max(5, Math.round(100 - (stats.overdue / stats.total) * 100))
+      ? Math.round(((stats.total - stats.overdue) / stats.total) * 100)
       : null;
   // Only a 'missing' report (Friday passed, still not filed) counts as an issue;
   // 'pending' (before Friday) is neutral.
@@ -177,7 +179,9 @@ function MemberCard({
               )}
             </div>
           ) : (
-            <span className="text-xs text-ink4 mt-1 block">No tasks</span>
+            <span className="text-xs text-ink4 mt-1 block">
+              On time: – · No open tasks
+            </span>
           )}
         </div>
 

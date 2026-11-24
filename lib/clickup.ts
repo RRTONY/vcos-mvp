@@ -6,7 +6,10 @@ import {
   PRIORITY_HIGH,
   CLICKUP_EXCLUDED_FOLDER_IDS,
   CLICKUP_EXCLUDED_LIST_IDS,
+  CLICKUP_PERSONAL_TASK_LISTS,
+  CLICKUP_DONE_STATUS,
 } from "@/lib/constants";
+import { getTeamMembers } from "@/lib/team-db";
 
 const BASE = "https://api.clickup.com/api/v2";
 
@@ -37,6 +40,48 @@ function isExcluded(t: CUTask): boolean {
   );
 }
 
+const PERSONAL_LIST_IDS: readonly string[] = CLICKUP_PERSONAL_TASK_LISTS.map(
+  (l) => l.id,
+);
+
+/** An open task in one of the nine personal task lists - the only tasks the
+ *  dashboard counts. Finished = status "complete" (or any closed-type status). */
+export function isCountedTask(t: CUTask): boolean {
+  return (
+    !!t.list?.id &&
+    PERSONAL_LIST_IDS.includes(t.list.id) &&
+    t.status?.type !== "closed" &&
+    (t.status?.status ?? "").trim().toLowerCase() !== CLICKUP_DONE_STATUS
+  );
+}
+
+/**
+ * Snapshot key for each personal list's owner, e.g. "chitraket savani / webmaster".
+ * Every page looks a person up with `key.includes(cuKey)`, where cuKey is
+ * team_members.clickup_key or the lowercased first name - so the key carries
+ * both the full name and the ClickUp key.
+ */
+export interface ListOwner {
+  key: string;
+  clickupKey: string;
+  clickupUserId: string | null;
+}
+async function listOwners(): Promise<Record<string, ListOwner>> {
+  const members = await getTeamMembers(false).catch(() => []);
+  const out: Record<string, ListOwner> = {};
+  for (const l of CLICKUP_PERSONAL_TASK_LISTS) {
+    const m = members.find((x) => x.full_name === l.owner);
+    const name = l.owner.toLowerCase();
+    const cuKey = (m?.clickup_key || name.split(" ")[0]).toLowerCase();
+    out[l.id] = {
+      key: name.includes(cuKey) ? name : `${name} / ${cuKey}`,
+      clickupKey: cuKey,
+      clickupUserId: m?.clickup_user_id ?? null,
+    };
+  }
+  return out;
+}
+
 function taskDetail(t: CUTask) {
   return {
     id: t.id,
@@ -49,6 +94,7 @@ function taskDetail(t: CUTask) {
       ? new Date(parseInt(t.due_date)).toLocaleDateString("en-US", {
           month: "short",
           day: "numeric",
+          timeZone: "America/Los_Angeles",
         })
       : "",
     dueTs: t.due_date ? parseInt(t.due_date) : null,
@@ -93,17 +139,20 @@ function slimTask(t: CUTask): CUTask {
 // updates (applyTaskChange) can patch it instead of re-fetching everything.
 export async function buildClickUpSnapshot() {
   const teamId = process.env.CLICKUP_WORKSPACE_ID ?? CLICKUP_WORKSPACE_ID;
-  const data = await getTeamTasks(teamId);
+  const [data, owners] = await Promise.all([
+    getTeamTasks(teamId),
+    listOwners(),
+  ]);
   const tasks = (data.tasks ?? []).map(slimTask);
   await recordSuccess(RAW_SOURCE, tasks);
-  return snapshotFromTasks(tasks);
+  return snapshotFromTasks(tasks, owners);
 }
 
 // Keeps VCoS in step with ClickUp in real time: replaces (or removes) one
 // task in the stored raw list and rewrites the snapshot every page reads.
 // `task` is the task as ClickUp now has it, or null if it was deleted.
-// Closed and excluded tasks are dropped, matching the full fetch (which uses
-// include_closed=false). Falls back to a full rebuild if no raw list exists.
+// Finished tasks and tasks outside the nine personal lists are dropped,
+// matching the full fetch. Falls back to a full rebuild if no raw list exists.
 // Patches within one server instance run one at a time (e.g. a weekly report
 // updating several tasks at once) so they can't overwrite each other's
 // read-modify-write; the periodic full refresh corrects any cross-instance
@@ -121,11 +170,12 @@ async function patchTask(taskId: string, task: CUTask | null) {
     await recordSuccess("clickup", await buildClickUpSnapshot());
     return;
   }
-  const tasks = (raw.data as CUTask[]).filter((t) => t.id !== taskId);
-  if (task && task.status?.type !== "closed" && !isExcluded(task))
-    tasks.push(slimTask(task));
+  const tasks = (raw.data as CUTask[]).filter(
+    (t) => t.id !== taskId && isCountedTask(t),
+  );
+  if (task && isCountedTask(task)) tasks.push(slimTask(task));
   await recordSuccess(RAW_SOURCE, tasks);
-  await recordSuccess("clickup", snapshotFromTasks(tasks));
+  await recordSuccess("clickup", snapshotFromTasks(tasks, await listOwners()));
 }
 
 // Single task as ClickUp has it now; null if it no longer exists.
@@ -292,69 +342,69 @@ export async function getTaskDetail(
   };
 }
 
-function snapshotFromTasks(tasks: CUTask[]) {
+// Every figure is computed from open tasks in the nine personal lists only
+// (see CLICKUP_PERSONAL_TASK_LISTS), credited to the list's OWNER:
+//   total   = open tasks
+//   overdue = open, with a due date earlier than now (no due date = never)
+//   urgent  = open, priority Urgent
+// assigneeStats / tasksByAssignee keep their names for compatibility but are
+// keyed by list owner (see listOwners), not by the task's assignee.
+function snapshotFromTasks(
+  allTasks: CUTask[],
+  owners: Record<string, ListOwner>,
+) {
   const now = Date.now();
+  const tasks = allTasks.filter(isCountedTask);
+  const isOverdue = (t: CUTask) => !!t.due_date && parseInt(t.due_date) < now;
 
-  const overdueTasks = tasks.filter(
-    (t) =>
-      t.due_date && parseInt(t.due_date) < now && t.status?.type !== "closed",
-  );
-  const urgentTasks = tasks.filter(
-    (t) => t.priority?.id === PRIORITY_URGENT && t.status?.type !== "closed",
-  );
-  const highTasks = tasks.filter(
-    (t) => t.priority?.id === PRIORITY_HIGH && t.status?.type !== "closed",
-  );
-  const completedTasks = tasks.filter((t) => t.status?.type === "closed");
+  const overdueTasks = tasks.filter(isOverdue);
+  const urgentTasks = tasks.filter((t) => t.priority?.id === PRIORITY_URGENT);
+  const highTasks = tasks.filter((t) => t.priority?.id === PRIORITY_HIGH);
   const totalActive = tasks.length;
 
   const assigneeStats: Record<
     string,
     { total: number; overdue: number; urgent: number }
   > = {};
-  for (const t of tasks) {
-    if (t.status?.type === "closed") continue;
-    for (const a of t.assignees ?? []) {
-      const name = (a.username ?? a.email ?? "").toLowerCase();
-      if (!name) continue;
-      if (!assigneeStats[name])
-        assigneeStats[name] = { total: 0, overdue: 0, urgent: 0 };
-      assigneeStats[name].total++;
-      if (t.due_date && parseInt(t.due_date) < now)
-        assigneeStats[name].overdue++;
-      if (t.priority?.id === PRIORITY_URGENT) assigneeStats[name].urgent++;
-    }
-  }
-
   const tasksByAssignee: Record<string, TaskDetail[]> = {};
-  for (const t of tasks) {
-    if (t.status?.type === "closed") continue;
-    for (const a of t.assignees ?? []) {
-      const name = (a.username ?? a.email ?? "").toLowerCase();
-      if (!name) continue;
-      if (!tasksByAssignee[name]) tasksByAssignee[name] = [];
-      tasksByAssignee[name].push(taskDetail(t));
-    }
+  // Everyone with a list appears, even with 0 open tasks.
+  for (const o of Object.values(owners)) {
+    assigneeStats[o.key] = { total: 0, overdue: 0, urgent: 0 };
+    tasksByAssignee[o.key] = [];
   }
-  for (const name of Object.keys(tasksByAssignee))
-    tasksByAssignee[name].sort(byPriorityThenDue);
+  for (const t of tasks) {
+    const owner = owners[t.list!.id];
+    if (!owner) continue;
+    const st = assigneeStats[owner.key];
+    st.total++;
+    if (isOverdue(t)) st.overdue++;
+    if (t.priority?.id === PRIORITY_URGENT) st.urgent++;
+    tasksByAssignee[owner.key].push(taskDetail(t));
+  }
+  for (const key of Object.keys(tasksByAssignee))
+    tasksByAssignee[key].sort(byPriorityThenDue);
 
-  // Avatar info per assignee (ClickUp profile pictures / initials) - keyed the
-  // same way as assigneeStats so the UI can look it up by assignee key.
+  // Avatar per list owner: their ClickUp profile, found among the assignees
+  // seen on counted tasks (by user id, else username/email containing their key).
+  const seen = tasks.flatMap((t) => t.assignees ?? []);
   const assigneeAvatars: Record<
     string,
     { image: string | null; initials: string | null; color: string | null }
   > = {};
-  for (const t of tasks) {
-    for (const a of t.assignees ?? []) {
-      const name = (a.username ?? a.email ?? "").toLowerCase();
-      if (!name || assigneeAvatars[name]) continue;
-      assigneeAvatars[name] = {
+  for (const o of Object.values(owners)) {
+    const a =
+      seen.find((x) => o.clickupUserId && String(x.id) === o.clickupUserId) ??
+      seen.find((x) =>
+        [x.username, x.email].some((n) =>
+          n?.toLowerCase().includes(o.clickupKey),
+        ),
+      );
+    if (a)
+      assigneeAvatars[o.key] = {
         image: a.profilePicture ?? null,
         initials: a.initials ?? null,
         color: a.color ?? null,
       };
-    }
   }
 
   return {
@@ -365,10 +415,11 @@ function snapshotFromTasks(tasks: CUTask[]) {
         ? Math.round((overdueTasks.length / totalActive) * 100)
         : 0,
     urgent: urgentTasks.length,
-    completed: completedTasks.length,
-    overdueDetails: overdueTasks.slice(0, 25).map(taskDetail),
-    urgentDetails: urgentTasks.slice(0, 25).map(taskDetail),
-    highDetails: highTasks.slice(0, 25).map(taskDetail),
+    // Finished tasks are never fetched, so there is nothing to count here.
+    completed: 0,
+    overdueDetails: overdueTasks.map(taskDetail),
+    urgentDetails: urgentTasks.map(taskDetail),
+    highDetails: highTasks.map(taskDetail),
     assigneeStats,
     tasksByAssignee,
     assigneeAvatars,
@@ -411,15 +462,18 @@ async function fetchClickUp(
 }
 
 export async function getTeamTasks(teamId: string) {
-  // Filter to tasks updated in the last 180 days to exclude stale archived work
-  const since = Date.now() - 180 * 24 * 60 * 60 * 1000;
-  const base = `${BASE}/team/${teamId}/task?subtasks=true&include_closed=false&date_updated_gt=${since}`;
+  // Only the nine personal task lists - and every open task in them, however
+  // long since it was last updated (an old open task is still open).
+  const lists = CLICKUP_PERSONAL_TASK_LISTS.map(
+    (l) => `list_ids[]=${l.id}`,
+  ).join("&");
+  const base = `${BASE}/team/${teamId}/task?subtasks=true&include_closed=false&${lists}`;
 
   // Fetch pages in concurrent batches instead of one-at-a-time. Sequential
   // pagination of ~20+ pages took ~25s and timed out serverless functions
   // (causing the dashboard to intermittently lose all ClickUp data). Batches of
   // BATCH keep us well under ClickUp's rate limit while cutting wall-clock ~4-5x.
-  const BATCH = 12;
+  const BATCH = 4;
   const MAX_PAGES = 60; // safety cap: 6000 tasks
 
   async function fetchPage(
@@ -443,9 +497,8 @@ export async function getTeamTasks(teamId: string) {
     }
   }
 
-  // Drop tasks from excluded legacy/archive folders+lists before they ever
-  // reach a consumer - keeps them out of stats, overdue counts, and AI context.
-  return { tasks: allTasks.filter((t) => !isExcluded(t)) };
+  // Belt and braces: drop anything outside the nine lists or finished.
+  return { tasks: allTasks.filter(isCountedTask) };
 }
 
 export async function pingUser() {

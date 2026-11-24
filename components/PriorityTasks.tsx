@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import type { Task } from "@/lib/types";
+import { dueLabel } from "@/lib/due-buckets";
 
 const FILTERS = [
   { id: "all", label: "All" },
@@ -72,7 +73,7 @@ export default function PriorityTasks({
             </span>
             <span className="s">
               {t.list}
-              {t.dueDate ? ` · Due ${t.dueDate}` : ""}
+              {t.dueTs ? ` · ${dueLabel(t.dueTs)}` : ""}
               {t.assignees.length ? ` · ${t.assignees.join(", ")}` : ""}
             </span>
           </a>

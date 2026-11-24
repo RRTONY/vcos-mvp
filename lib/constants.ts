@@ -19,6 +19,28 @@ export const CLICKUP_EXCLUDED_LIST_IDS = [
   "901114023521",
 ];
 
+// The nine personal task lists - the ONLY ClickUp lists the dashboard counts.
+// Everything else in the workspace (CLIENTS, RELATIONSHIPS, CONTACTS,
+// Agreements Status, pipelines, reference lists, former members' lists)
+// holds names and details, not tasks, and is ignored. A task belongs to the
+// person who owns its list (`owner` = team_members.full_name), not to its
+// assignee. Add/remove a row here when someone joins or leaves.
+export const CLICKUP_PERSONAL_TASK_LISTS = [
+  { id: "901115441187", name: "Tony's Tasks", owner: "Tony" },
+  { id: "901114764205", name: "Josh's Tasks", owner: "Josh Bykowski" },
+  { id: "901115370773", name: "Rob's Tasks", owner: "Rob Holmes" },
+  { id: "901115370770", name: "Alex's Tasks", owner: "Alex Veytsel" },
+  { id: "901115370908", name: "Kimberly's Tasks", owner: "Kimberly" },
+  { id: "901114420816", name: "Sam's Tasks", owner: "Satyajeet Patnayak" },
+  { id: "901114761090", name: "Darryl's Tasks", owner: "Darryl D’souza" },
+  { id: "901114764065", name: "Sai's tasks", owner: "Sai Narendra" },
+  { id: "901114763476", name: "Chitraket's Tasks", owner: "Chitraket Savani" },
+] as const;
+
+// ClickUp status that means finished. All nine lists use: to do, in progress,
+// complete.
+export const CLICKUP_DONE_STATUS = "complete";
+
 // ClickUp priority IDs (from ClickUp API)
 export const PRIORITY_URGENT = "1";
 export const PRIORITY_HIGH = "2";
