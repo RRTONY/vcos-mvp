@@ -54,6 +54,9 @@ LinkedIn (analytics) and Supabase (its own tables), and posts reminders and brie
   report = `files_report = true`.
 - **Secrets stay on the server** and out of code, docs and commits. A new env var goes in
   `.env.example` (no value) and must also be set in Netlify; say so in the Status Report.
+- **Loading states use the spinner** (`components/Spinner.tsx`, e.g.
+  `<Spinner label="Loading reports" />`), never dotted text like "Loading…" or "Saving...".
+  (Chitraket, 2026-11-25.)
 - **No new npm dependency without asking first.**
 - **Never post to Slack, DM people, or write to the live database to test something** without a
   clear yes. To check logic against live data, run it read-only (stub cache writes and
