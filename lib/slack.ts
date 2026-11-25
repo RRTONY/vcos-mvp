@@ -292,15 +292,38 @@ const REPORT_SECTION_HEADINGS = [
 // update", "Weekly Progress Report 10th - 14th August", "My weekly report".
 const REPORT_TITLE = /weekly (report|update)|progress report|status report/i;
 
+// Posts ABOUT the team's reports, not someone's own report: Darryl's Monday
+// "WEEKLY REPORT COMPLIANCE" summary ("8 of 10 team members submitted ...")
+// and the "Weekly People Audit", including its per-person blocks that open
+// ":bust_in_silhouette: <@U...> (hours ...)". These mention the
+// "#myweeklyreport tag" in prose and carry numbered "Decisions needed" lists,
+// so they passed as Darryl's own report. Matched only against the opening
+// lines of a person's post: a real report can name a "People Audit" task
+// further down, and VCoS-posted reports are always real reports.
+const TEAM_SUMMARY =
+  /weekly report compliance|people audit|\b\d+ of \d+ team members?\b|^:bust_in_silhouette: <@/im;
+const TEAM_SUMMARY_HEAD_LINES = 5;
+
+function isTeamSummary(text: string): boolean {
+  const head = text
+    .split("\n")
+    .filter((l) => l.trim())
+    .slice(0, TEAM_SUMMARY_HEAD_LINES)
+    .join("\n");
+  return TEAM_SUMMARY.test(head);
+}
+
 /**
  * A message counts as a weekly report when it carries #myweeklyreport, or
  * when a person (not a bot) posts something report-shaped without the tag
  * (e.g. Ben's Nov 13 report) - that must not trigger daily reminders:
  *   - at least 4 numbered report sections, or
  *   - a short report-style title line plus 2+ sections or a substantial body.
+ * Team summaries (TEAM_SUMMARY) never count.
  */
 export function isWeeklyReportMessage(m: ChannelMessage): boolean {
   const text = m.text ?? "";
+  if (!m.bot_id && m.user && isTeamSummary(text)) return false;
   if (text.toLowerCase().includes("#myweeklyreport")) return true;
   // thread_broadcast = a thread reply also sent to the channel; still a
   // person's own post. Other subtypes (joins, bot posts, ...) never count.

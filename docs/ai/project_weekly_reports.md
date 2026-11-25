@@ -1,7 +1,7 @@
 # Weekly Reports: How Filing Is Detected
 
 > Who owes a report, how VCoS decides filed / late / missing, reminders, and the Nov 2026 bug.
-> Last updated 2026-11-25.
+> Last updated 2026-11-26.
 
 ## Who owes a report
 
@@ -55,3 +55,14 @@ The reminder attributed Slack posts to a week by posting date and treated "filed
 Nov 16–20 report, so the Nov 23 and Nov 24 reminders named only Danish. Fixed on branch
 `fix/weekly-report-missing` by the week rules above. Checked read-only against live data: as of
 Nov 23 it flags Danish and Rob, and still counts Ben's hand-written Slack report.
+
+## Team summary posts are not reports (2026-11-26)
+
+Darryl's Monday posts in `#weeklyreports` ("WEEKLY REPORT COMPLIANCE", "8 of 10 team members
+submitted...", the Weekly People Audit and its ":bust_in_silhouette: <@person>" blocks) mention
+the `#myweeklyreport` tag in prose and have numbered "Decisions needed" lists, so
+`isWeeklyReportMessage` counted them as Darryl's own report. Before the week fix above, they
+also counted for the new week: on Nov 24 the dashboard showed Darryl, plus Josh and Kimberly
+(whose Nov 16–20 reports went in Mon Nov 23), as filed for Nov 23–27. A person's post whose
+first 5 lines match `TEAM_SUMMARY` in `lib/slack.ts` is now never a report. VCoS-posted reports
+skip this check. Checked against 120 days of the channel: only those 2 posts changed.
