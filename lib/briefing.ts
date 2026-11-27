@@ -28,7 +28,16 @@ export type BriefingData = Record<string, unknown>;
 export interface BriefingDoc {
   id: string;
   data: BriefingData;
+  /** The row's updated_at, exactly as stored. Pass it back as if_version. */
+  version?: string;
 }
+
+type Row = { id: string; data: BriefingData; updated_at?: string };
+const toDoc = (r: Row): BriefingDoc => ({
+  id: r.id,
+  data: r.data,
+  ...(r.updated_at ? { version: r.updated_at } : {}),
+});
 
 // Fields owned by the team (Status / Comments). Scheduled research jobs must
 // never overwrite them - they're carried forward when a job replaces an entry.
@@ -89,26 +98,29 @@ export async function listDocs(
 ): Promise<BriefingDoc[]> {
   let q = getSupabase()
     .from("briefing_docs")
-    .select("id, data")
+    .select("id, data, updated_at")
     .eq("collection", collection);
   if (meetingId) q = q.eq("meeting_id", meetingId);
   const { data, error } = await q;
   if (error) throw new Error(error.message);
-  return ((data ?? []) as BriefingDoc[]).filter((d) => !d.data.hidden);
+  return ((data ?? []) as Row[]).map(toDoc).filter((d) => !d.data.hidden);
 }
+
+type Db = ReturnType<typeof getSupabase>;
 
 export async function getDoc(
   collection: BriefingCollection,
   id: string,
+  client: Db = getSupabase(),
 ): Promise<BriefingDoc | null> {
-  const { data, error } = await getSupabase()
+  const { data, error } = await client
     .from("briefing_docs")
-    .select("id, data")
+    .select("id, data, updated_at")
     .eq("collection", collection)
     .eq("id", id)
     .maybeSingle();
   if (error) throw new Error(error.message);
-  return (data as BriefingDoc | null) ?? null;
+  return data ? toDoc(data as Row) : null;
 }
 
 // ── Writes ──────────────────────────────────────────────────────────────────
@@ -120,6 +132,13 @@ const meetingIdOf = (collection: BriefingCollection, id: string, d: BriefingData
       ? d.meetingId
       : null;
 
+/** A job replacing a document keeps the team's note, and sync fields unless it sent new ones. */
+function mergeForService(prev: BriefingDoc | null, data: BriefingData): BriefingData {
+  if (!prev) return data;
+  const keep = pick(prev.data, [...TEAM_NOTE_FIELDS, ...CU_SYNC_FIELDS]);
+  return { ...keep, ...data, ...pick(prev.data, TEAM_NOTE_FIELDS) };
+}
+
 /** Replace a document. A job replacing an entry keeps the team's note and sync fields. */
 export async function setDoc(
   actor: BriefingActor,
@@ -127,15 +146,10 @@ export async function setDoc(
   id: string,
   data: BriefingData,
 ): Promise<void> {
-  let next = data;
-  if (actor.kind === "service") {
-    const prev = await getDoc(collection, id);
-    if (prev) {
-      // Keep team-owned fields; keep sync fields unless the job sent new ones.
-      const keep = pick(prev.data, [...TEAM_NOTE_FIELDS, ...CU_SYNC_FIELDS]);
-      next = { ...keep, ...data, ...pick(prev.data, TEAM_NOTE_FIELDS) };
-    }
-  }
+  const next =
+    actor.kind === "service"
+      ? mergeForService(await getDoc(collection, id), data)
+      : data;
   const { error } = await getSupabase()
     .from("briefing_docs")
     .upsert({
@@ -176,6 +190,93 @@ export async function deleteDoc(
     .eq("collection", collection)
     .eq("id", id);
   if (error) throw new Error(error.message);
+}
+
+// ── Versioned writes (optimistic concurrency) ───────────────────────────────
+// For the scheduled jobs (Darryl's handoff, docs/03 section 4). The version is
+// the row's updated_at; every successful write changes it. Each write is
+// conditional in the database itself (`.eq("updated_at", ifVersion)`), so two
+// writers racing on the same version can't both win. No schema change needed.
+//   ifVersion string → the document must exist at exactly that version
+//   ifVersion null   → the document must not exist yet (create)
+
+export class VersionConflict extends Error {
+  constructor(public current: string | null) {
+    super("Version conflict");
+  }
+}
+export class DocNotFound extends Error {
+  constructor() {
+    super("Not found");
+  }
+}
+
+export async function writeIfVersion(
+  actor: BriefingActor,
+  op: "set" | "update" | "delete",
+  collection: BriefingCollection,
+  id: string,
+  data: BriefingData,
+  ifVersion: string | null,
+  client: Db = getSupabase(),
+): Promise<string | null> {
+  const prev = await getDoc(collection, id, client);
+  if ((prev?.version ?? null) !== ifVersion)
+    throw new VersionConflict(prev?.version ?? null);
+  const db = client.from("briefing_docs");
+  const now = new Date().toISOString();
+
+  if (!prev) {
+    if (op !== "set") throw new DocNotFound();
+    const { data: row, error } = await db
+      .insert({
+        collection,
+        id,
+        meeting_id: meetingIdOf(collection, id, data),
+        data,
+        updated_at: now,
+        updated_by: actor.name,
+      })
+      .select("updated_at")
+      .maybeSingle();
+    if (error) {
+      if (error.code === "23505") {
+        const cur = await getDoc(collection, id, client);
+        throw new VersionConflict(cur?.version ?? null);
+      }
+      throw new Error(error.message);
+    }
+    return (row as { updated_at: string } | null)?.updated_at ?? null;
+  }
+
+  const conditional = <T extends { eq: (c: string, v: string) => T }>(q: T) =>
+    q.eq("collection", collection).eq("id", id).eq("updated_at", ifVersion!);
+
+  if (op === "delete") {
+    const { data: rows, error } = await conditional(db.delete()).select("id");
+    if (error) throw new Error(error.message);
+    if (!rows?.length) throw new VersionConflict((await getDoc(collection, id, client))?.version ?? null);
+    return null;
+  }
+
+  const next =
+    op === "update"
+      ? { ...prev.data, ...data }
+      : actor.kind === "service"
+        ? mergeForService(prev, data)
+        : data;
+  const { data: rows, error } = await conditional(
+    db.update({
+      data: next,
+      meeting_id: meetingIdOf(collection, id, next),
+      updated_at: now,
+      updated_by: actor.name,
+    }),
+  ).select("updated_at");
+  if (error) throw new Error(error.message);
+  if (!rows?.length)
+    throw new VersionConflict((await getDoc(collection, id, client))?.version ?? null);
+  return (rows[0] as { updated_at: string }).updated_at;
 }
 
 // ── Fireflies → Meeting log ─────────────────────────────────────────────────

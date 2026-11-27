@@ -58,3 +58,21 @@ waiting, questions). Meeting ids are the meeting date, `YYYY-MM-DD`; every other
 4. Point the prepare, refresh and ClickUp-sync jobs at the API above; change the link in the
    #rr-internal notices to `https://<vcos-host>/briefing`.
 5. Test: save a team note, refresh, confirm the ClickUp sync posts exactly one comment on the right record.
+
+## API for the scheduled jobs (2026-11-28, handoff docs/03 section 4)
+
+`/api/briefing` (`app/api/briefing/route.ts`, `lib/briefing.ts`):
+
+- **Sign-in:** `x-briefing-key: <BRIEFING_API_KEY>` or `Authorization: Bearer <CC_SERVICE_TOKEN>`
+  (`lib/briefing-auth.ts`, constant-time compare, used by `middleware.ts` too). Either makes the
+  caller the "service" actor: it can never write `teamNote`/`teamNoteBy`/`teamNoteAt`.
+- **Versions:** every doc in a GET has `version` (the row's `updated_at`, exactly as stored).
+  A write with `if_version` only happens if the doc is still at that version; `null` means
+  "must not exist yet". Otherwise **409** `{ error: "Version conflict", version: <current> }`.
+  The condition is in the database update itself (`.eq("updated_at", ifVersion)`), so two writers
+  on the same version can't both win. Writes without `if_version` behave as before.
+- **Batch:** `{ op: "batch", writes: [...] }`, 1 to 50 writes, run in order, **not a
+  transaction**: `results[i]` says whether each write happened (`{ ok, id, version }` or
+  `{ ok: false, status, error, version? }`).
+- Self-test (fake table, never touches Supabase): `node scripts/briefing-versions.selftest.mjs`.
+- `CC_SERVICE_TOKEN` must be set in Netlify (and `.env` locally) before the jobs can use Bearer.

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { COOKIE_NAME, verifySession } from "@/lib/auth";
+import { isServiceRequest } from "@/lib/briefing-auth";
 
 export async function middleware(req: NextRequest) {
   // Skip auth for login page and auth API routes
@@ -13,11 +14,7 @@ export async function middleware(req: NextRequest) {
   }
   // Scheduled Briefing Room jobs authenticate with their own key; the route
   // itself re-checks it before granting automation access.
-  if (
-    pathname === "/api/briefing" &&
-    process.env.BRIEFING_API_KEY &&
-    req.headers.get("x-briefing-key") === process.env.BRIEFING_API_KEY
-  ) {
+  if (pathname === "/api/briefing" && isServiceRequest(req.headers)) {
     return NextResponse.next();
   }
 
