@@ -1,12 +1,20 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { useRefresh } from "./RefreshContext";
 import { useMe } from "@/hooks/useMe";
 import { ANALYTICS_SITES, X_ACCOUNTS, LINKEDIN_ACCOUNTS } from "@/lib/constants";
 import { FiRefreshCw } from "react-icons/fi";
 import BrandMark from "./BrandMark";
+import WorkspaceSwitch from "./WorkspaceSwitch";
+import { workspaceFromPath } from "@/lib/workspace";
+
+// Navy for VCoS, teal for the Command Centre (Darryl's design tokens).
+const HEADER_BG = {
+  vcos: "radial-gradient(1200px 400px at 85% -20%, #2A4380 0, transparent 60%), linear-gradient(135deg, #0F1B33, #1C2E55)",
+  cc: "radial-gradient(1200px 400px at 85% -20%, #145E6C 0, transparent 60%), linear-gradient(135deg, #0B3F4A, #0E5B6A)",
+} as const;
 
 export default function Topbar() {
   const { me } = useMe();
@@ -14,6 +22,7 @@ export default function Topbar() {
   const { triggerRefresh } = useRefresh();
   const [refreshing, setRefreshing] = useState(false);
   const router = useRouter();
+  const workspace = workspaceFromPath(usePathname());
 
   useEffect(() => {
     setDateStr(
@@ -106,11 +115,8 @@ export default function Topbar() {
 
   return (
     <div
-      className="text-white h-16 flex items-center justify-between px-4 sm:px-6 sticky top-0 z-40"
-      style={{
-        background:
-          "radial-gradient(1200px 400px at 85% -20%, #2A4380 0, transparent 60%), linear-gradient(135deg, #0F1B33, #1C2E55)",
-      }}
+      className="text-white h-16 flex items-center justify-between px-4 sm:px-6 sticky top-0 z-40 transition-[background] duration-[360ms] motion-reduce:transition-none"
+      style={{ background: HEADER_BG[workspace] }}
     >
       {/* Gold accent line */}
       <span
@@ -123,9 +129,7 @@ export default function Topbar() {
       {/* Brand */}
       <div className="flex items-center gap-3 min-w-0">
         <BrandMark />
-        <span className="font-display font-extrabold text-[19px] tracking-tight truncate">
-          Visual Chief of Staff
-        </span>
+        <WorkspaceSwitch />
       </div>
 
       {/* Right side */}

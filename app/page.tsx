@@ -633,7 +633,7 @@ export default function DashboardPage() {
 
   const quickLinks = [
     { href: "/submit", t: "Submit my weekly report", s: "Due end of day Friday" },
-    { href: "/briefing", t: "Open the Briefing Room", s: "Monday and Thursday team meeting" },
+    { href: "/command-centre/overview", t: "Open the Command Centre", s: "Monday and Thursday team meeting" },
     { href: "/chatbot", t: "Ask VCoS-AI", s: "Find anything or build a report from live data" },
     { href: "/team", t: "Team overview", s: "Reports, hours, people and decisions" },
   ];

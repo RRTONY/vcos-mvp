@@ -1,12 +1,19 @@
-# Briefing Room in VCoS
+# Briefing Room in VCoS (now the Command Centre)
 
-CEO Command Centre for the Monday and Thursday team meetings, at `/briefing`.
+CEO Command Centre for the Monday and Thursday team meetings, at `/command-centre/<tab>`
+(2026-11-28, Darryl's handoff phase 1). The top bar switches between the two workspaces
+(`components/WorkspaceSwitch.tsx`, `lib/workspace.ts`): navy "Visual Chief of Staff" and teal
+"Command Centre"; the last one used is remembered (`localStorage` `vcos.workspace`) and reopened
+when someone lands on `/`. Tabs are real addresses (`overview`, `email-audit`, `decisions`,
+`meeting-log`, `what-changed`, `questions`, `history`); the page itself renders in
+`app/command-centre/layout.tsx` so data survives tab changes. Old `/briefing` and
+`/briefing?tab=<id>` links 308-redirect to the matching tab (`next.config.js`).
 
 ## How it is wired
 
 | Piece | File |
 |---|---|
-| Page (native React, VCoS design system) | `app/briefing/page.tsx` |
+| Page (native React, VCoS design system) | `components/briefing/BriefingRoom.tsx`, routed by `app/command-centre/` |
 | Tabs and detail panel | `components/briefing/*` |
 | Data loading, 60 s refresh, saves | `hooks/useBriefing.ts` |
 | Status, ordering, "what changed" logic | `lib/briefing-view.ts` |

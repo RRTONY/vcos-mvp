@@ -1,8 +1,10 @@
 "use client";
 
-// Briefing Room - CEO Command Centre for the Monday/Thursday team meetings.
-// Data: /api/briefing (lib/briefing.ts). Team edits; Tony views and answers
-// questions; Edit data / Present are admin-only.
+// Command Centre (formerly the Briefing Room) - for the Monday/Thursday team
+// meetings. Data: /api/briefing (lib/briefing.ts). Team edits; Tony views and
+// answers questions; Edit data / Present are admin-only. Rendered by
+// app/command-centre/layout.tsx so the loaded data survives tab changes; the
+// active tab comes from the URL (/command-centre/<slug>, lib/workspace.ts).
 import { useCallback, useEffect, useMemo, useState } from "react";
 import TabBar from "@/components/TabBar";
 import Skeleton from "@/components/Skeleton";
@@ -12,10 +14,9 @@ import CommandCentre from "@/components/briefing/CommandCentre";
 import EntrySheet from "@/components/briefing/EntrySheet";
 import { AuditTab, ChangesTab, DecisionsTab, LogTab } from "@/components/briefing/RecordTabs";
 import { HistoryTab, QuestionsTab } from "@/components/briefing/PeopleTabs";
+import { isCcTabId, type CcTabId } from "@/lib/workspace";
 
-const TAB_IDS = ["overview", "audit", "decisions", "log", "changes", "questions", "history"] as const;
-type TabId = (typeof TAB_IDS)[number];
-const isTab = (v: string | null): v is TabId => TAB_IDS.includes(v as TabId);
+type TabId = CcTabId;
 
 function useNow(ms: number) {
   const [now, setNow] = useState(() => Date.now());
@@ -26,11 +27,16 @@ function useNow(ms: number) {
   return now;
 }
 
-export default function BriefingRoomPage() {
+export default function BriefingRoom({
+  tab,
+  onTab,
+}: {
+  tab: TabId;
+  onTab: (t: TabId) => void;
+}) {
   const data = useBriefing();
   const { meeting, meetings, access, entries, audit, waiting, log, questions } = data;
   const isAdmin = !!access?.isAdmin;
-  const [tab, setTab] = useState<TabId>("overview");
   const [edit, setEdit] = useState(false);
   const [present, setPresent] = useState(false);
   const [sheet, setSheet] = useState<{ id: string; visible: string[] } | null>(null);
@@ -38,20 +44,15 @@ export default function BriefingRoomPage() {
   const [who, setWhoState] = useState("Josh");
   const now = useNow(60_000);
 
-  // Tab from ?tab= on load
-  useEffect(() => {
-    const t = new URLSearchParams(window.location.search).get("tab");
-    if (isTab(t)) setTab(t);
-  }, []);
-  const goTab = useCallback((t: string, focusId?: string) => {
-    if (!isTab(t)) return;
-    setTab(t);
-    setFocusAudit(focusId ?? null);
-    const url = new URL(window.location.href);
-    url.searchParams.set("tab", t);
-    window.history.replaceState(null, "", url);
-    if (!focusId) window.scrollTo({ top: 0 });
-  }, []);
+  const goTab = useCallback(
+    (t: string, focusId?: string) => {
+      if (!isCcTabId(t)) return;
+      setFocusAudit(focusId ?? null);
+      onTab(t);
+      if (!focusId) window.scrollTo({ top: 0 });
+    },
+    [onTab],
+  );
 
   // "Asked by" / "Updated by" default: last choice, else the signed-in person
   useEffect(() => {
@@ -116,7 +117,7 @@ export default function BriefingRoomPage() {
   const noReply = audit.filter((a) => a.status === "noreply").length;
   const changed = diff.state === "ok" ? diff.added.length + diff.updated.length : null;
   const tabs = [
-    { id: "overview" as const, label: "Command Centre" },
+    { id: "overview" as const, label: "Overview" },
     { id: "audit" as const, label: "Email audit", count: audit.length ? noReply : null, alert: true },
     { id: "decisions" as const, label: "Decisions", count: waiting.length },
     { id: "log" as const, label: "Meeting log", count: log.length },
@@ -138,6 +139,9 @@ export default function BriefingRoomPage() {
 
   return (
     <div className={present ? "text-[18px]" : ""}>
+      <div className="sticky top-16 z-30 -mx-4 sm:-mx-6 lg:-mx-8 px-4 sm:px-6 lg:px-8 mb-4 bg-sand2/95 backdrop-blur">
+        <TabBar tabs={tabs} active={tab} onChange={(t) => goTab(t)} />
+      </div>
       {/* Header */}
       <section className="hero-band">
         <div className="flex flex-wrap items-start justify-between gap-4">
@@ -216,9 +220,8 @@ export default function BriefingRoomPage() {
         </div>
       </section>
 
-      {data.error && <div className="alert alert-red">Could not load the Briefing Room: {data.error}</div>}
+      {data.error && <div className="alert alert-red">Could not load the Command Centre: {data.error}</div>}
 
-      <TabBar tabs={tabs} active={tab} onChange={(t) => goTab(t)} />
       <div className="pt-6">
         {tab === "overview" && <CommandCentre data={data} diff={diff} edit={edit} onOpenEntry={openEntry} goTab={goTab} />}
         {tab === "audit" && <AuditTab data={data} edit={edit} focusId={focusAudit} onOpenEntry={(id) => openEntry(id)} />}

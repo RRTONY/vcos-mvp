@@ -24,7 +24,7 @@ import { onTimePct, statsFor, type DashMember, type DashReport } from "./types";
 
 const QUICK_ACTIONS = [
   { href: "/submit", title: "Submit my weekly report", sub: "Due end of day Friday" },
-  { href: "/briefing", title: "Open the Briefing Room", sub: "Monday and Thursday team meeting" },
+  { href: "/command-centre/overview", title: "Open the Command Centre", sub: "Monday and Thursday team meeting" },
   { href: "/chatbot", title: "Ask VCoS-AI", sub: "Find anything or build a report from live data" },
   { href: "/team", title: "Team overview", sub: "Reports, hours, people and decisions" },
 ];

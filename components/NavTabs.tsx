@@ -3,10 +3,10 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useMe } from "@/hooks/useMe";
+import { workspaceFromPath } from "@/lib/workspace";
 
 const TABS = [
   { label: "Dashboard", href: "/" },
-  { label: "Briefing Room", href: "/briefing" },
   { label: "Team", href: "/team" },
   { label: "Weekly Report", href: "/submit" },
   { label: "VCoS-AI", href: "/chatbot" },
@@ -24,6 +24,8 @@ const SYSTEMS_TAB = { label: "Systems", href: "/systems" };
 export default function NavTabs() {
   const path = usePathname();
   const { isAdmin } = useMe();
+  // The Command Centre shows its own tab bar (components/briefing/BriefingRoom.tsx).
+  if (workspaceFromPath(path) === "cc") return null;
 
   const allTabs = isAdmin
     ? [...TABS, ...ADMIN_TABS, SYSTEMS_TAB]
