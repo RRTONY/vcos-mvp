@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { FiAlertTriangle, FiTrendingUp } from "react-icons/fi";
 import StaleBadge from "@/components/StaleBadge";
+import DigitalEstate from "@/components/analytics/DigitalEstate";
 import Skeleton from "@/components/Skeleton";
 import TabBar from "@/components/TabBar";
 import { PagesTable } from "@/components/PagesTable";
@@ -189,6 +190,12 @@ function OverviewPanel({
 
   return (
     <section>
+      <DigitalEstate
+        snapshots={snapshots}
+        xSnapshots={xSnapshots}
+        linkedInSnapshots={linkedInSnapshots}
+        loading={loading}
+      />
       {errorSites.length > 0 && (
         <div className="alert alert-red mb-4">
           <FiAlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
