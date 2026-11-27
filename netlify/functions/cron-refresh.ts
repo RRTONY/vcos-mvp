@@ -15,6 +15,10 @@ const SOURCES = [
   "webwork",
   "fireflies-meetings",
   "systems-status",
+  // Search Console data moves once a day (Digital Estate band, lib/search-console.ts).
+  "search-console?site=ramprate",
+  "search-console?site=tonygreenberg",
+  "search-console?site=clarisseartist",
 ] as const;
 
 export default async () => {

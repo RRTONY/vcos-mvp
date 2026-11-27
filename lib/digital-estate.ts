@@ -82,7 +82,7 @@ export function gaToday(now: Date = new Date()): string {
 
 /** What Tony asked for that has no live source yet: shown as "not connected", never as zero. */
 export const NOT_CONNECTED = [
-  "Google Search clicks and rankings",
+  "Google Search for ImpactSoul (not in Search Console)",
   "Conversion funnel and form submissions",
   "Calls to action and their clicks",
   "Sign-in numbers",

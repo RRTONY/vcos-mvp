@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { FiAlertTriangle, FiTrendingUp } from "react-icons/fi";
 import StaleBadge from "@/components/StaleBadge";
 import DigitalEstate from "@/components/analytics/DigitalEstate";
+import type { SearchConsoleSnapshot } from "@/lib/search-console";
 import Skeleton from "@/components/Skeleton";
 import TabBar from "@/components/TabBar";
 import { PagesTable } from "@/components/PagesTable";
@@ -12,9 +13,11 @@ import {
   ANALYTICS_SITES,
   X_ACCOUNTS,
   LINKEDIN_ACCOUNTS,
+  SEARCH_CONSOLE_SITES,
   type AnalyticsSiteId,
   type XAccountId,
   type LinkedInAccountId,
+  type SearchConsoleSiteId,
 } from "@/lib/constants";
 import type {
   AnalyticsSnapshot,
@@ -85,6 +88,8 @@ const LINKEDIN_ACCOUNT_TO_SITE: Record<LinkedInAccountId, AnalyticsSiteId> = {
 const LINKEDIN_INFO_ONLY_SITES: Partial<Record<AnalyticsSiteId, boolean>> = {
   tonygreenberg: true,
 };
+
+type SearchSnapshotState = SearchConsoleSnapshot & { error?: string | null };
 
 type SnapshotState = AnalyticsSnapshot & {
   error?: string | null;
@@ -172,12 +177,14 @@ function BreakdownList({
 
 // ── Dashboard tab - the condensed, most-important-things-only overview ──────
 function OverviewPanel({
+  searchSnapshots,
   snapshots,
   xSnapshots,
   linkedInSnapshots,
   loading,
   onOpenBrand,
 }: {
+  searchSnapshots: Partial<Record<SearchConsoleSiteId, SearchSnapshotState | null>>;
   snapshots: Record<AnalyticsSiteId, SnapshotState | null>;
   xSnapshots: Record<XAccountId, XSnapshotState | null>;
   linkedInSnapshots: Record<LinkedInAccountId, LinkedInSnapshotState | null>;
@@ -191,6 +198,7 @@ function OverviewPanel({
   return (
     <section>
       <DigitalEstate
+        searchSnapshots={searchSnapshots}
         snapshots={snapshots}
         xSnapshots={xSnapshots}
         linkedInSnapshots={linkedInSnapshots}
@@ -985,8 +993,23 @@ export default function AnalyticsPage() {
   const [linkedInSnapshots, setLinkedInSnapshots] = useState<
     Record<LinkedInAccountId, LinkedInSnapshotState | null>
   >({} as Record<LinkedInAccountId, LinkedInSnapshotState | null>);
+  const [searchSnapshots, setSearchSnapshots] = useState<
+    Partial<Record<SearchConsoleSiteId, SearchSnapshotState | null>>
+  >({});
   const [loading, setLoading] = useState(true);
   const { refreshKey } = useRefresh();
+
+  async function fetchSearchConsole() {
+    const ids = SEARCH_CONSOLE_SITES.map((s) => s.id);
+    const results = await Promise.all(
+      ids.map((id) =>
+        fetch(`/api/search-console?site=${id}`, { cache: "no-store" })
+          .then((r) => r.json())
+          .catch(() => null),
+      ),
+    );
+    setSearchSnapshots(Object.fromEntries(ids.map((id, i) => [id, results[i]])));
+  }
 
   function openBrand(site: AnalyticsSiteId, sub: SubTabId) {
     setTab(site);
@@ -1051,6 +1074,7 @@ export default function AnalyticsPage() {
       fetchSites(ANALYTICS_SITES.map((s) => s.id));
       fetchXAccounts(X_ACCOUNTS.map((a) => a.id));
       fetchLinkedInAccounts(LINKEDIN_ACCOUNTS.map((a) => a.id));
+      fetchSearchConsole();
       return;
     }
     fetchSites([tab]);
@@ -1076,6 +1100,7 @@ export default function AnalyticsPage() {
       <div className="mt-4">
         {tab === "overview" ? (
           <OverviewPanel
+            searchSnapshots={searchSnapshots}
             snapshots={snapshots}
             xSnapshots={xSnapshots}
             linkedInSnapshots={linkedInSnapshots}

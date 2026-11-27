@@ -4,7 +4,7 @@ import { useEffect, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { useRefresh } from "./RefreshContext";
 import { useMe } from "@/hooks/useMe";
-import { ANALYTICS_SITES, X_ACCOUNTS, LINKEDIN_ACCOUNTS } from "@/lib/constants";
+import { ANALYTICS_SITES, X_ACCOUNTS, LINKEDIN_ACCOUNTS, SEARCH_CONSOLE_SITES } from "@/lib/constants";
 import { FiRefreshCw } from "react-icons/fi";
 import BrandMark from "./BrandMark";
 
@@ -40,6 +40,9 @@ export default function Topbar() {
       ),
       ...LINKEDIN_ACCOUNTS.map((a) =>
         fetch(`/api/linkedin-analytics?account=${a.id}`, { method: "POST" }),
+      ),
+      ...SEARCH_CONSOLE_SITES.map((s) =>
+        fetch(`/api/search-console?site=${s.id}`, { method: "POST" }),
       ),
     ]);
     triggerRefresh();

@@ -124,3 +124,13 @@ export type LinkedInAccountId = (typeof LINKEDIN_ACCOUNTS)[number]["id"];
 // Briefing Room (CEO Command Centre). These VCoS usernames see the page
 // view-only, except that they can answer the team's questions.
 export const BRIEFING_VIEW_ONLY_USERNAMES = ["tony"];
+
+// Google Search Console properties for the Digital Estate band
+// (lib/search-console.ts). Keyed like ANALYTICS_SITES. The VCoS service
+// account (GOOGLE_GA_CLIENT_EMAIL) must be a user on each property.
+export const SEARCH_CONSOLE_SITES = [
+  { id: "ramprate", label: "RampRate", property: "https://ramprate.com/" },
+  { id: "tonygreenberg", label: "Tony Greenberg", property: "https://tonygreenberg.com/" },
+  { id: "clarisseartist", label: "Clarisse Artist", property: "sc-domain:clarisseartist.com" },
+] as const;
+export type SearchConsoleSiteId = (typeof SEARCH_CONSOLE_SITES)[number]["id"];

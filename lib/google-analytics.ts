@@ -7,7 +7,8 @@ const SCOPE = "https://www.googleapis.com/auth/analytics.readonly";
 
 // ─── Service-account auth (JWT bearer flow, no googleapis dependency) ────────
 
-let cachedToken: { value: string; expiresAt: number } | null = null;
+// One cached token per scope (GA4 and Search Console share the account).
+const cachedTokens = new Map<string, { value: string; expiresAt: number }>();
 
 function base64url(input: Buffer | string): string {
   return Buffer.from(input)
@@ -17,7 +18,9 @@ function base64url(input: Buffer | string): string {
     .replace(/=+$/, "");
 }
 
-async function getAccessToken(): Promise<string> {
+/** Service-account access token; also used by lib/search-console.ts. */
+export async function getAccessToken(scope: string = SCOPE): Promise<string> {
+  const cachedToken = cachedTokens.get(scope);
   if (cachedToken && cachedToken.expiresAt > Date.now() + 60_000)
     return cachedToken.value;
 
@@ -35,7 +38,7 @@ async function getAccessToken(): Promise<string> {
   const claims = base64url(
     JSON.stringify({
       iss: clientEmail,
-      scope: SCOPE,
+      scope,
       aud: TOKEN_URL,
       iat: now,
       exp: now + 3600,
@@ -62,10 +65,10 @@ async function getAccessToken(): Promise<string> {
     access_token: string;
     expires_in: number;
   };
-  cachedToken = {
+  cachedTokens.set(scope, {
     value: data.access_token,
     expiresAt: Date.now() + data.expires_in * 1000,
-  };
+  });
   return data.access_token;
 }
 

@@ -10,14 +10,17 @@ import Skeleton from "@/components/Skeleton";
 import {
   ANALYTICS_SITES,
   LINKEDIN_ACCOUNTS,
+  SEARCH_CONSOLE_SITES,
   X_ACCOUNTS,
   type AnalyticsSiteId,
+  type SearchConsoleSiteId,
   type LinkedInAccountId,
   type XAccountId,
 } from "@/lib/constants";
 import type { AnalyticsSnapshot } from "@/lib/google-analytics";
 import type { XSnapshot } from "@/lib/x-analytics";
 import type { LinkedInSnapshot } from "@/lib/linkedin-analytics";
+import type { SearchConsoleSnapshot } from "@/lib/search-console";
 import {
   NOT_CONNECTED,
   compareWeeks,
@@ -162,12 +165,68 @@ function SocialTile({
   );
 }
 
+function SearchTile({
+  label,
+  snap,
+  loading,
+}: {
+  label: string;
+  snap: Loaded<SearchConsoleSnapshot>;
+  loading: boolean;
+}) {
+  const noAccess = !!snap?.error && /access/i.test(snap.error);
+  const has = snap && snap.current && !snap.error;
+  const diff = has ? snap.current.clicks - snap.previous.clicks : 0;
+  return (
+    <div className="rounded-xl border border-violet-300/20 bg-white/[0.06] px-4 py-3 min-w-0">
+      <div className="text-[11px] font-bold uppercase tracking-widest text-violet-200 truncate">
+        Google Search · {label}
+      </div>
+      {loading && !snap ? (
+        <Skeleton className="h-6 w-24 mt-2 !bg-white/15" />
+      ) : !has ? (
+        <p className="text-xs text-violet-200/80 mt-2">
+          {noAccess
+            ? "Needs access: add the VCoS Google account as a user on this Search Console property."
+            : snap?.error
+              ? `No data: ${snap.error}`
+              : "No data yet"}
+        </p>
+      ) : (
+        <>
+          <div className="font-display font-extrabold text-xl text-white mt-1">
+            {fmt(snap.current.clicks)}{" "}
+            <span className="text-[11px] font-semibold text-violet-200/80">clicks</span>
+            <span
+              className={`ml-2 text-xs font-semibold ${
+                diff === 0 ? "text-violet-200/70" : diff > 0 ? "text-emerald-300" : "text-amber-300"
+              }`}
+            >
+              {diff > 0 ? "+" : ""}
+              {fmt(diff)} vs prior week
+            </span>
+          </div>
+          <div className="text-[11px] text-violet-100/90 mt-0.5">
+            {fmt(snap.current.impressions)} impressions (was {fmt(snap.previous.impressions)})
+            {snap.current.position !== null && <>, average position {snap.current.position.toFixed(1)}</>}
+          </div>
+          <div className="text-[11px] text-violet-200/70 mt-0.5">
+            {fmtDay(snap.from)} to {fmtDay(snap.to)}. Google reports search data about 3 days late.
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
 export default function DigitalEstate({
+  searchSnapshots,
   snapshots,
   xSnapshots,
   linkedInSnapshots,
   loading,
 }: {
+  searchSnapshots: Partial<Record<SearchConsoleSiteId, Loaded<SearchConsoleSnapshot>>>;
   snapshots: Record<AnalyticsSiteId, Loaded<AnalyticsSnapshot>>;
   xSnapshots: Record<XAccountId, Loaded<XSnapshot>>;
   linkedInSnapshots: Record<LinkedInAccountId, Loaded<LinkedInSnapshot>>;
@@ -200,7 +259,7 @@ export default function DigitalEstate({
           {flagged > 0
             ? `${flagged} site${flagged > 1 ? "s" : ""} moved 25% or more this week`
             : "No site moved 25% or more this week"}
-          . Source: Google Analytics, X, LinkedIn.
+          . Source: Google Analytics, Google Search Console, X, LinkedIn.
         </p>
       </div>
 
@@ -237,6 +296,12 @@ export default function DigitalEstate({
             />
           );
         })}
+      </div>
+
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mt-3">
+        {SEARCH_CONSOLE_SITES.map((s) => (
+          <SearchTile key={`sc-${s.id}`} label={s.label} snap={searchSnapshots[s.id] ?? null} loading={loading} />
+        ))}
       </div>
 
       <div className="mt-4 rounded-xl border border-dashed border-violet-300/30 px-4 py-3">
